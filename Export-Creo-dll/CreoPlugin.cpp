@@ -258,7 +258,7 @@ static bool NoteInBorder(ProDtlnote* note,
 // Public entry point
 // ---------------------------------------------------------------------------
 
-RuleCheckResult CreoPlugin::CheckSheetBorderRule()
+RuleCheckResult CreoPlugin::RuleFunctions()
 {
     RuleCheckResult result;
     result.passed = false;
