@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Export-Creo-dll/Export-Creo-dll.vcxproj" />
+</Solution>

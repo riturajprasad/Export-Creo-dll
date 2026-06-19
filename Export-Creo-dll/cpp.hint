@@ -1,0 +1,2 @@
+#define EXPORTCREODLL_API __declspec(dllexport)
+#define EXPORTCREODLL_API __declspec(dllimport)
