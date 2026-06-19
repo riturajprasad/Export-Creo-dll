@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="Export-Creo-dll/Export-Creo-dll.vcxproj" />
+  <Project Path="Export-Creo-dll/Export-Creo-dll.vcxproj" Id="545b5112-7b05-4b1e-ad83-f3fb2e6100f3" />
 </Solution>
