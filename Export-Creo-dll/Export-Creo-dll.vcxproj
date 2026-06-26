@@ -179,6 +179,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CreoPlugin.cpp" />
+    <ClCompile Include="CreoRuleContract.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="Export-Creo-dll.cpp" />
     <ClCompile Include="pch.cpp">
