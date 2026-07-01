@@ -140,7 +140,6 @@
       <AdditionalIncludeDirectories>
         C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\includes;
         C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\protk_appls\includes;
-        c:\Samiksha Phase-2\Creo_Plugin_Backend\CreoRuleChecker\CreoAPI\Headers;
         %(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
     </ClCompile>
@@ -169,7 +168,6 @@
       <AdditionalIncludeDirectories>
         C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\includes;
         C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\protk_appls\includes;
-        c:\Samiksha Phase-2\Creo_Plugin_Backend\CreoRuleChecker\CreoAPI\Headers;
         %(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
     </ClCompile>
@@ -188,6 +186,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CreoPlugin.h" />
+    <ClInclude Include="CreoRuleContract.h" />
     <ClInclude Include="Export-Creo-dll.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="pch.h" />
