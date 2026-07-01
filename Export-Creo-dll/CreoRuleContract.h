@@ -42,7 +42,12 @@
 //   GD&T · Annotations · Drawing Tables · 3D Tables · Draft Entities
 //   Detail Groups · Symbol Instances · Layers · Model/Solid · Selection · Array
 //   Text Style · Symbol Definitions · Solid/Feature · Simplified Reps
-//   (Removed: 3D Model Notes · Set Datum Tags · Surface Finish · Annotation Elements
+//   (Removed: 3D Model Notes · Set Datum Tags · Surface Finish · Annotation Elements ·
+//    ProDimensionOrdinatestandardGet · ProDtlattachArrowtypeGet · ProGtolAddlTextBoxedGet ·
+//    ProGtolTextstyleGet · ProGtoltextTextstyleGet · ProGtolElbowlengthGet ·
+//    ProGtolLineEnvelopeGet · ProGtolRightTextEnvelopeGet · ProAnnotationElementGet ·
+//    ProAnnotationIsInactive · ProAnnotationIsAssociative · ProAnnotationelemIsReadonly ·
+//    ProAnnotationelemHasMissingrefs · ProAnnotationTextstyleGet · ProAnnotationplaneAngleGet
 //    — all require TOOLKIT-for-3D_Drawings license)
 // ============================================================================
 
@@ -340,7 +345,6 @@ struct CreoApiContext
     ProError(*ProDimensionDisplayFormatGet)(ProDimension* dimension, ProDimensionDisplayFormat* type);
     ProError(*ProDimensionParentGet)      (ProDimension* dim, ProDimension* parent_dim);
     ProError(*ProDimensionIsSignDriven)   (ProDimension* dimension, ProBoolean* is_sign_driven);
-    ProError(*ProDimensionOrdinatestandardGet)(ProDimension* dimension, ProDimOrdinateStandard* ordinate_standard);
     ProError(*ProDimensionBoundGet)       (ProDimension* dim, ProDimbound* r_bound);
     ProError(*ProDimensionTollabelGet)    (ProDimension* dimension, ProToleranceTable* type,
         ProName table, int* column);
@@ -399,7 +403,6 @@ struct CreoApiContext
     ProError(*ProDtlattachGet)           (ProDtlattach attachment, ProDtlattachType* type,
         ProView* view, ProVector location,
         ProSelection* attach_point);
-    ProError(*ProDtlattachArrowtypeGet)  (ProDtlattach attach, ProLeaderType* arrow_type);
     ProError(*ProDtlattachIsSuppressedGet)(ProDtlattach attach, ProBoolean* is_supp);
     ProError(*ProDtlattachAlloc)         (ProDtlattachType type, ProView view,
         ProVector location, ProSelection attach_point,
@@ -427,12 +430,6 @@ struct CreoApiContext
     ProError(*ProGtolLeftTextGet)        (ProGtol* gtol, wchar_t** left_text);
     ProError(*ProGtolPrefixGet)          (ProGtol* gtol, wchar_t** prefix);
     ProError(*ProGtolSuffixGet)          (ProGtol* gtol, wchar_t** suffix);
-    ProError(*ProGtolAddlTextBoxedGet)   (ProGtol* gtol, ProGtolTextType text_type, ProBoolean* is_boxed);
-    ProError(*ProGtolTextstyleGet)       (ProGtol* gtol, ProTextStyle* text_style);
-    ProError(*ProGtoltextTextstyleGet)   (ProGtol* gtol, ProGtolTextType text_type, ProTextStyle* text_style);
-    ProError(*ProGtolElbowlengthGet)     (ProGtol* gtol, double* elbow_length, ProVector elbow_direction);
-    ProError(*ProGtolLineEnvelopeGet)    (ProGtol* note, int line_number, ProLineEnvelope envelope);
-    ProError(*ProGtolRightTextEnvelopeGet)(ProGtol* note, ProLineEnvelope envelope);
     ProError(*ProGtolEnvelopeGet)        (ProGtol* gtol, ProDrawing drawing, ProLineEnvelope envelope);
     ProError(*ProGtolEnvelopeGetWithFlags)(ProGtol* gtol, ProDrawing drawing,
         ProGtolEnvelopeFlag flags, ProLineEnvelope envelope);
@@ -478,21 +475,7 @@ struct CreoApiContext
     // ════════════════════════════════════════════════════════════════════════
     // §10  ANNOTATIONS  (ProAnnotation.h / ProAnnotationElem.h)
     // ════════════════════════════════════════════════════════════════════════
-    ProError(*ProAnnotationElementGet)  (ProAnnotation* annotation, ProAnnotationElem* element);
-    ProError(*ProAnnotationIsInactive)  (ProAnnotation* annotation, ProBoolean* is_inactive);
     ProError(*ProAnnotationIsShown)     (ProAnnotation* annotation, ProDrawing drawing, ProBoolean* is_shown);
-    ProError(*ProAnnotationIsAssociative)(ProAnnotation* annotation, ProDrawing drawing,
-        ProBoolean* assoc_position,
-        ProAnnotationAttachmentAssociativity* assoc_attach,
-        ProBoolean* future_use);
-    ProError(*ProAnnotationelemIsReadonly)(ProAnnotationElem* p_element, ProBoolean* is_readonly);
-    ProError(*ProAnnotationelemHasMissingrefs)(ProAnnotationElem* element,
-        ProAnnotationRefFilter type,
-        ProAnnotationRefFromType source,
-        ProBoolean at_least_one, ProBoolean* has_missing_refs);
-    ProError(*ProAnnotationTextstyleGet)(ProAnnotation* annotation, ProDrawing drawing,
-        ProAsmcomppath* comp_path, ProView view,
-        ProTextStyle* text_style);
     ProError(*ProAnnotationNeedsConversion)(ProAnnotation* annotation, ProBoolean* needs_conversion);
     ProError(*ProAnnotationSecuritymarkingGet)(ProAnnotation* annotation, ProBoolean* is_secure);
     ProError(*ProAnnotationOffsetSymbolsGet)(ProAnnotation* annotation, ProDrawing drawing,
@@ -508,7 +491,6 @@ struct CreoApiContext
     ProError(*ProAnnotationplaneReferenceGet)(ProAnnotationPlane* plane, ProSelection* reference);
     ProError(*ProAnnotationplanePlaneGet)    (ProAnnotationPlane* plane, ProPlanedata* data);
     ProError(*ProAnnotationplaneVectorGet)   (ProAnnotationPlane* plane, ProVector direction);
-    ProError(*ProAnnotationplaneAngleGet)    (ProAnnotationPlane* plane, ProVector orientation, double* angle);
     ProError(*ProAnnotationplaneFrozenGet)   (ProAnnotationPlane* plane, ProBoolean* frozen);
     ProError(*ProAnnotationplaneViewnameGet) (ProAnnotationPlane* plane, ProLine view_name);
     ProError(*ProAnnotationplaneTypeGet)     (ProAnnotationPlane* plane, ProAnnotationPlaneType* type);
