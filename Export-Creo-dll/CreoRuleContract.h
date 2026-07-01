@@ -1,7 +1,7 @@
 #pragma once
 // ============================================================================
 // CreoRuleContract.h  —  Shared API bridge for CreoRuleChecker and all rule DLLs
-// Version: 3
+// Version: 4
 // ============================================================================
 //
 // PURPOSE
@@ -37,12 +37,13 @@
 //   When adding entries: ALSO add the corresponding fill in MainThreadDispatcher.cpp
 //   (one extra line in the s_api initialiser) and rebuild CreoRuleChecker.dll.
 //
-// COVERAGE (version 3)
+// COVERAGE (version 4)
 //   Drawing/Sheet · Views · Dimensions · Detail Notes · Attachments
 //   GD&T · Annotations · Drawing Tables · 3D Tables · Draft Entities
 //   Detail Groups · Symbol Instances · Layers · Model/Solid · Selection · Array
-//   3D Model Notes · Text Style · Set Datum Tags · Surface Finish
-//   Symbol Definitions · Annotation Elements · Solid/Feature · Simplified Reps
+//   Text Style · Symbol Definitions · Solid/Feature · Simplified Reps
+//   (Removed: 3D Model Notes · Set Datum Tags · Surface Finish · Annotation Elements
+//    — all require TOOLKIT-for-3D_Drawings license)
 // ============================================================================
 
 #ifndef PRO_USE_VAR_ARGS
@@ -81,11 +82,8 @@
 #include <ProArray.h>
 #include <ProSelection.h>
 #include <ProMdlUnits.h>
-#include <ProSetDatumTag.h>
-#include <ProSurfFinish.h>
 #include <ProSimprep.h>
 #include <ProSimprepdata.h>
-#include <ProDatumTarget.h>
 #include <ProXsec.h>
 
 // ── ProToolkit API table ─────────────────────────────────────────────────────
@@ -99,7 +97,7 @@
 
 struct CreoApiContext
 {
-    int version; // = 3
+    int version; // = 4
 
     // ════════════════════════════════════════════════════════════════════════
     // §1  MODEL / DRAWING IDENTITY
@@ -290,8 +288,6 @@ struct CreoApiContext
         ProBoolean* has_z_ext_1, ProPoint3d z_ext_1,
         ProBoolean* has_z_ext_2, ProPoint3d z_ext_2);
     ProError(*ProDimlocationNormalGet)       (ProDimlocation location, ProVector normal);
-    ProError(*ProDimlocationArrowtypesGet)   (ProDimlocation location,
-        ProLeaderType* arrow_1, ProLeaderType* arrow_2);
     ProError(*ProDimlocationCenterleadertypeGet)(ProDimlocation data,
         ProDimCenterLeaderType* center_leader_type,
         ProLeaderType* leader_type,
@@ -320,19 +316,8 @@ struct CreoApiContext
     ProError(*ProDimensionIsToleranceDisplayed)(ProDimension* dimension, ProBoolean* tolerance_displayed);
     ProError(*ProDimensionIsBasic)        (ProDimension* dimension, ProBoolean* basic);
     ProError(*ProDimensionIsInspection)   (ProDimension* dimension, ProBoolean* inspection);
-    ProError(*ProDimensionTextstyleGet)   (ProDimension* dimension, ProTextStyle* text_style);
     ProError(*ProDimensionFeatureGet)     (ProDimension* dimension, ProFeature* feature);
     ProError(*ProDimensionOwnerfeatureGet)(ProDimension* dimension, ProFeature* feature);
-    ProError(*ProDimensionAttachmentsGet) (ProDimension* dimension,
-        ProAnnotationPlane* annotation_plane,
-        ProDimAttachment** attachments_arr,
-        ProDimSense** dsense_arr, ProDimOrient* orient_hint);
-    ProError(*ProDimattachmentarrayFree)  (ProDimAttachment* attachments_arr);
-    ProError(*ProDimensionPlaneGet)       (ProDimension* dimension, ProAnnotationPlane* plane);
-    ProError(*ProDimensionIsDriving)      (ProDimension* dimension, ProBoolean* is_driving);
-    ProError(*ProDimensionIsOrdinate)     (ProDimension* dimension,
-        ProBoolean* is_ordinate, ProDimension* baseline);
-    ProError(*ProDimensionIsBaseline)     (ProDimension* dimension, ProBoolean* is_baseline);
     ProError(*ProDimensionIsDisplayRoundedValue)(ProDimension* dimension, ProBoolean* p_is_display_rounded);
     ProError(*ProDimensionTolerancedecimalsGet)(ProDimension* dimension, int* tolerance_decimals);
     ProError(*ProDimensionTolerancedenominatorGet)(ProDimension* dimension, int* tolerance_denominator);
@@ -665,19 +650,9 @@ struct CreoApiContext
         ProDtlsyminstGroupStatus status,
         ProDtlsymgroup** group_array);
     ProError(*ProDtlsyminstFeatureGet)  (ProDtlsyminst* symbol_instance, ProFeature* symbol_owner);
-    ProError(*ProDtlsyminstdataPlaneGet)(ProDtlsyminstdata data, ProAnnotationPlane* plane);
-    ProError(*ProSolidDtlsyminstVisit)  (ProSolid solid,
-        ProDtlitemVisitAction  visit_action,
-        ProDtlitemFilterAction filter_action, ProAppData data);
-    ProError(*ProSolidDtlsyminstsCollect)(ProSolid p_solid, ProDtlsyminst** px_sym_insts);
-    ProError(*ProDtlsymInstentityDataGet)(ProDtlentity* entity, ProDtlsyminstdata data,
-        ProDtlentitydata* entdata);
-    ProError(*ProDtlsymInstnoteDataGet) (ProDtlnote* note, ProDtlsyminstdata data,
-        ProDisplayMode mode, ProDtlnotedata* notedata);
     ProError(*ProDtlsyminstEntitiesVisibleGet)(ProDtlsyminst* sym_inst, int** status);
     ProError(*ProDtlsyminstEnvelopeGet) (ProDtlsyminst* syminst, ProLineEnvelope envelope);
     ProError(*ProDtlsyminstReferencesGet)(ProDtlsyminst* syminst, ProAnnotationReference** p_refs);
-    ProError(*ProDtlsyminstSurffinGet)  (ProDtlsyminst* syminst, ProSurfFinish* surf_fin);
     ProError(*ProDtlsyminstSolidSymGet) (ProDtlsyminst* syminst, ProDtlsyminst* solid_sym);
 
     // ════════════════════════════════════════════════════════════════════════
@@ -766,53 +741,6 @@ struct CreoApiContext
         int reallocation_size, ProArray* p_array);
 
     // ════════════════════════════════════════════════════════════════════════
-    // §20  3D MODEL NOTES  (ProNote.h)
-    // ════════════════════════════════════════════════════════════════════════
-    ProError(*ProMdlNoteVisit)               (ProMdl mdl_handle,
-        ProMdlNoteVisitAction  visit_action,
-        ProMdlNoteFilterAction filter_action,
-        ProAppData app_data);
-    ProError(*ProNoteTextGet)                (ProNote* p_note,
-        ProDisplayMode display_mode,
-        wchar_t*** p_note_text);
-    ProError(*ProNoteTextStyleGet)           (ProNote* p_note_item,
-        ProTextStyle* r_text_style);
-    ProError(*ProNoteLineEnvelopeGet)        (ProNote* note, int line_number,
-        ProLineEnvelope envelope);
-    ProError(*ProNoteLeaderstyleGet)         (ProNote* note, ProLeaderStyle* type);
-    ProError(*ProNoteElbowlengthGet)         (ProNote* note, double* elbow_length,
-        ProVector elbow_direction);
-    ProError(*ProNotePlacementGet)           (ProNote* p_note_item,
-        ProNoteAttach* r_note_att);
-    ProError(*ProNoteOwnerGet)               (ProNote* p_note_item,
-        ProModelitem* r_note_owner);
-    ProError(*ProNoteReferencesGet)          (ProNote* note,
-        ProAnnotationReference** p_refs);
-    ProError(*ProNoteDtlnoteGet)             (ProNote* solid_model_note,
-        ProDrawing drawing,
-        ProDtlnote* dtl_note);
-    ProError(*ProNoteWrapTextGet)            (ProNote* note, ProBoolean* wrap,
-        double* wrap_width);
-    ProError(*ProNoteURLWstringGet)          (ProNote* p_note_item, wchar_t** r_url);
-    ProError(*ProNoteURLExtraInfoGet)        (ProNote* p_note_item, ProBoolean* r_val);
-    // — NoteAttach helpers —
-    ProError(*ProNoteAttachAlloc)            (ProNoteAttach* r_note_att);
-    ProError(*ProNoteAttachRelease)          (ProNoteAttach* p_note_att);
-    ProError(*ProNoteAttachFreeGet)          (ProNoteAttach note_att,
-        double* r_p1, double* r_p2, double* r_p3);
-    ProError(*ProNoteAttachLeadersGet)       (ProNoteAttach note_att,
-        ProSelection** endpoints,
-        ProNoteAttachAttr** attrs,
-        ProLeaderType** arrow_types);
-    ProError(*ProNoteAttachNormtanleaderGet) (ProNoteAttach note_attach,
-        ProNoteAttachAttr* leader_type,
-        double* length, ProVector direction);
-    ProError(*ProNoteAttachOnitemGet)        (ProNoteAttach note_att,
-        ProSelection* on_item);
-    ProError(*ProNoteAttachPlaneGet)         (ProNoteAttach note_att,
-        ProAnnotationPlane* annotation_plane);
-
-    // ════════════════════════════════════════════════════════════════════════
     // §21  TEXT STYLE  (ProNote.h)
     // ════════════════════════════════════════════════════════════════════════
     ProError(*ProTextStyleAlloc)                (ProTextStyle* r_text_style);
@@ -834,69 +762,7 @@ struct CreoApiContext
         ProBoolean* is_height_in_model_units);
 
     // ════════════════════════════════════════════════════════════════════════
-    // §22  SET DATUM TAGS  (ProSetDatumTag.h)
-    // ════════════════════════════════════════════════════════════════════════
-    ProError(*ProDrawingSetdatumtagVisit)  (ProDrawing drawing,
-        ProSetdatumtagVisitAction  action,
-        ProSetdatumtagFilterAction filter,
-        ProAppData app_data);
-    ProError(*ProSolidSetdatumtagVisit)    (ProSolid solid,
-        ProSetdatumtagVisitAction  action,
-        ProSetdatumtagFilterAction filter,
-        ProAppData app_data);
-    ProError(*ProSetdatumtagLabelGet)      (ProSetDatumTag* dfs, wchar_t** lbl);
-    ProError(*ProSetdatumtagASMEDisplayGet)(ProSetDatumTag* dfs, ProBoolean* asme);
-    ProError(*ProSetdatumtagAttachmentGet) (ProSetDatumTag* tag,
-        ProSelection* attachment);
-    ProError(*ProSetdatumtagElbowGet)      (ProSetDatumTag* dfs, ProBoolean* elbow);
-    ProError(*ProSetdatumtagPlacementGet)  (ProSetDatumTag* tag,
-        ProModelitem* attach_item);
-    ProError(*ProSetdatumtagPlaneGet)      (ProSetDatumTag* tag,
-        ProAnnotationPlane* plane);
-    ProError(*ProSetdatumtagReferenceGet)  (ProSetDatumTag* tag,
-        ProGeomitem* reference);
-    ProError(*ProSetdatumtagReferencesGet) (ProSetDatumTag* dfs,
-        ProAnnotationReference** refs);
-    ProError(*ProSetdatumtagAdditionalTextGet)(ProSetDatumTag* dfs, wchar_t** lbl,
-        ProDtmFeatAddlTextPos* addlTextPos);
-    ProError(*ProSetdatumtagAdditionalTextLocationGet)(ProSetDatumTag* dfs,
-        ProDrawing drawing,
-        ProView view,
-        Pro3dPnt addl_pnt);
-    ProError(*ProSetdatumtagTextPointGet)  (ProSetDatumTag* dfs,
-        ProDrawing drw, ProView view,
-        Pro3dPnt pnt);
-    ProError(*ProDrawingSetDatumTagIsShown)(ProSetDatumTag* set_datum_tag,
-        ProDrawing drawing,
-        ProView view, ProBoolean* is_shown);
-    ProError(*ProDrawingLegacySetdatumtagIsShown)(ProSetDatumTag* tag,
-        ProDrawing drawing, ProView view,
-        ProAsmcomppath* path,
-        ProBoolean* is_shown);
-    ProError(*ProGeomitemSetdatumtagGet)   (ProGeomitem* item,
-        ProSetDatumTag* set_datum_tag);
-
-    // ════════════════════════════════════════════════════════════════════════
-    // §23  SURFACE FINISH  (ProSurfFinish.h)
-    // ════════════════════════════════════════════════════════════════════════
-    ProError(*ProSolidSurffinishVisit)     (ProSolid solid,
-        ProSurffinishVisitAction  visit_action,
-        ProSurffinishFilterAction filter_action,
-        ProAppData appdata);
-    ProError(*ProSurffinishValueGet)       (ProSurfFinish* surface_finish,
-        double* value);
-    ProError(*ProSurffinishReferencesGet)  (ProSurfFinish* surface_finish,
-        ProSelection** surface);
-    ProError(*ProSurffinishDataGet)        (ProSurfFinish* item,
-        ProDisplayMode mode,
-        ProDtlsyminstdata* data);
-    ProError(*ProSurffinishSrfcollectionGet)(ProSurfFinish* surf_finish,
-        ProCollection* srf_collection);
-    ProError(*ProSurffinishAdditionalReferencesGet)(ProSurfFinish* surf_finish,
-        ProAnnotationReference** p_refs);
-
-    // ════════════════════════════════════════════════════════════════════════
-    // §24  SYMBOL DEFINITIONS  (ProDtlsymdef.h / ProDatumTarget.h)
+    // §24  SYMBOL DEFINITIONS  (ProDtlsymdef.h)
     // ════════════════════════════════════════════════════════════════════════
     ProError(*ProDtlsymdefDataGet)          (ProDtlsymdef* symdef,
         ProDtlsymdefdata* data);
@@ -933,43 +799,12 @@ struct CreoApiContext
         ProDtlsymgroup* parent_group);
     ProError(*ProDtlsyminstdataDefattachGet)(ProDtlsyminstdata data,
         ProDtlsymdefattach* attach);
-    ProError(*ProDtlsyminstIsDatumTarget)   (ProDtlsyminst* p_datum_target,
-        ProBoolean* is_datum_target);
     ProError(*ProDrawingDtlsymdefsCollect)  (ProDrawing drawing,
         ProDtlsymdef** symdefs);
     ProError(*ProDrawingDtlsymdefVisit)     (ProMdl model,
         ProDtlitemVisitAction  visit_action,
         ProDtlitemFilterAction filter_action,
         ProAppData appdata);
-    ProError(*ProSolidDtlsymdefsCollect)    (ProSolid p_solid,
-        ProDtlsymdef** px_sym_defs);
-    ProError(*ProSolidDtlsymdefVisit)       (ProSolid solid,
-        ProDtlitemVisitAction  visit_action,
-        ProDtlitemFilterAction filter_action,
-        ProAppData appdata);
-
-    // ════════════════════════════════════════════════════════════════════════
-    // §25  ANNOTATION ELEMENTS — additional  (ProAnnotationElem.h)
-    // ════════════════════════════════════════════════════════════════════════
-    ProError(*ProAnnotationelemAnnotationGet)(ProAnnotationElem* element,
-        ProAnnotation* annotation);
-    ProError(*ProAnnotationelemFeatureGet)   (ProAnnotationElem* element,
-        ProFeature* feat);
-    ProError(*ProAnnotationelemTypeGet)      (ProAnnotationElem* element,
-        ProAnnotationType* type);
-    ProError(*ProAnnotationelemCopyGet)      (ProAnnotationElem* element,
-        ProBoolean* copy);
-    ProError(*ProAnnotationelemIsDependent)  (ProAnnotationElem* element,
-        ProBoolean* dependent);
-    ProError(*ProFeatureAnnotationelemsVisit)(ProFeature* feat,
-        ProAnnotationelemVisitAction  visit_action,
-        ProAnnotationelemFilterAction filter_action,
-        ProAppData data);
-    ProError(*ProSolidAnnotationelemsVisit)  (ProSolid solid,
-        ProAnnotationelemVisitAction  visit_action,
-        ProAnnotationelemFilterAction filter_action,
-        ProAppData data);
-    ProError(*ProAnnotationreferencearrayFree)(ProAnnotationReference* reference_array);
 
     // ════════════════════════════════════════════════════════════════════════
     // §26  ADDITIONAL DRAWING FUNCTIONS
