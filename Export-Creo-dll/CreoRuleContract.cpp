@@ -117,21 +117,25 @@ __declspec(dllexport) int CreoExecuteRule(const char* /*ruleJson*/, char** resul
     if (!resultJson) return 1;
     *resultJson = nullptr;
 
-    try {
+    // CreoPlugin::RuleFunctions() calls ProToolkit APIs (ProMdlCurrentGet,
+    // ProDrawingViewVisit, ProDrawingDtlnotesCollect, etc.).  Those APIs are
+    // only safe on Creo's main thread.  The Creo plugin backend ensures this
+    // function is invoked from the main thread via MainThreadDispatcher —
+    // a hidden HWND_MESSAGE window that receives PostMessage from the WebSocket
+    // worker thread and drains the work queue in its WndProc.
+    try
+    {
         RuleCheckResult res = CreoPlugin::RuleFunctions();
-
-        std::string json = SerialiseResult(res);
+        std::string json    = SerialiseResult(res);
         *resultJson = AllocCStr(json);
-        return (*resultJson) ? 0 : 1;   // non-null only when malloc succeeded
+        return (*resultJson) ? 0 : 1;
     }
     catch (...)
     {
-        // Serialise the error as a valid JSON payload so FunctionExecutor.cpp
-        // can display a readable message instead of a raw error code.
         const std::string err =
-            "{\"Status\":false,\"Descriptions\":"
-             "[{\"EntityName\":\"CreoExecuteRule threw an unexpected exception\","
-               "\"Status\":false}]}";
+            "{\"Status\":false,\"Descriptions\":["
+             "{\"EntityName\":\"CreoExecuteRule threw an unexpected C++ exception\","
+              "\"Status\":false}]}";
         *resultJson = AllocCStr(err);
         return 1;
     }

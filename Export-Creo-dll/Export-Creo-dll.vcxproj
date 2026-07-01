@@ -131,14 +131,25 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\includes;C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\protk_appls\includes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <!--
+        ProToolkit headers are included for type definitions only.
+        This DLL does NOT link protk_dll*.lib / ucore.lib / udata.lib.
+        All ProToolkit calls go through the CreoApiContext pointer table
+        provided by the host (CreoRuleChecker.dll) via CreoInit().
+      -->
+      <AdditionalIncludeDirectories>
+        C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\includes;
+        C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\protk_appls\includes;
+        c:\Samiksha Phase-2\Creo_Plugin_Backend\CreoRuleChecker\CreoAPI\Headers;
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\x86e_win64\obj;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>protk_dllmd_NU.lib;ucore.lib;udata.lib;ws2_32.lib;mpr.lib;netapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <!-- No ProToolkit libs — API access comes from the host via CreoApiContext -->
+      <AdditionalDependencies>ws2_32.lib;mpr.lib;netapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
@@ -155,14 +166,18 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\includes;C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\protk_appls\includes;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>
+        C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\includes;
+        C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\protk_appls\includes;
+        c:\Samiksha Phase-2\Creo_Plugin_Backend\CreoRuleChecker\CreoAPI\Headers;
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>C:\PTC\Creo 12.4.1.0\Common Files\protoolkit\x86e_win64\obj;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>protk_dllmd_NU.lib;ucore.lib;udata.lib;ws2_32.lib;mpr.lib;netapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ws2_32.lib;mpr.lib;netapi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
