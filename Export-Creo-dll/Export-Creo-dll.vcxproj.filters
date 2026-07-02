@@ -30,6 +30,9 @@
     <ClInclude Include="CreoPlugin.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="CreoRuleContract.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Export-Creo-dll.cpp">
@@ -41,7 +44,10 @@
     <ClCompile Include="pch.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="CreoPlugin.cpp">
+    <ClCompile Include="CreoPluginRule.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="CreoRuleContract.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
