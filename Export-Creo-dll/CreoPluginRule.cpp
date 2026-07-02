@@ -41,6 +41,7 @@ namespace
     const wchar_t* const kRequiredPhrases[] = {
         L"Burrs removed notes",
         L"Burrs and Sharp edges removed",
+        L"Difference with the drawing, mentioned in box \"Compare\" or \"Replaces\"",
     };
 
     bool ContainsPhrase(const std::wstring& haystack, const wchar_t* needle)
