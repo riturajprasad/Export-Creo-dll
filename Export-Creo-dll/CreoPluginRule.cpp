@@ -36,7 +36,7 @@ void CreoInit(const CreoApiContext* api)
 // ── Rule-specific helpers ──────────────────────────────────────────────────────
 namespace
 {
-    // A sketch symbol counts as a "burrs/sharp-edges" note if its rendered text
+    // A 2D symbol counts as a "burrs/sharp-edges" note if its rendered text
     // contains either phrase (case-insensitive, substring match).
     const wchar_t* const kRequiredPhrases[] = {
         L"Burrs removed notes",
@@ -59,7 +59,7 @@ namespace
         return false;
     }
 
-    // Checks the fixed text baked into a sketch symbol's definition (the note
+    // Checks the fixed text baked into a 2D symbol's definition (the note
     // lines drawn as part of the symbol artwork) against the required phrases.
     bool DefinitionTextMatches(ProDrawing drawing, int sheet, ProDtlsymdef* definition)
     {
@@ -138,7 +138,7 @@ namespace
         return matched;
     }
 
-    // A sketch-symbol instance passes if EITHER its symbol-definition artwork
+    // A 2D-symbol instance passes if EITHER its symbol-definition artwork
     // text OR its per-instance variable text carries one of the required notes.
     bool SymbolInstanceHasRequiredText(ProDrawing drawing, int sheet, ProDtlsyminst* syminst)
     {
@@ -162,9 +162,9 @@ namespace
 
 // ── Public entry point ────────────────────────────────────────────────────────
 //
-// Rule: pass when at least one sketch symbol on the active drawing carries the
+// Rule: pass when at least one 2D symbol on the active drawing carries the
 // text "Burrs removed notes" or "Burrs and Sharp edges removed"; fail when no
-// sketch symbol contains either phrase (including when the drawing has none).
+// 2D symbol contains either phrase (including when the drawing has none).
 
 RuleCheckResult CreoPlugin::RuleFunctions()
 {
@@ -213,7 +213,7 @@ RuleCheckResult CreoPlugin::RuleFunctions()
             const bool matched = SymbolInstanceHasRequiredText(drawing, sheet, &syminsts[i]);
 
             result.elements.push_back({
-                "Sketch Symbol " + std::to_string(symbolIndex) + " (Sheet " + std::to_string(sheet) + ")",
+                "2D Symbol " + std::to_string(symbolIndex) + " (Sheet " + std::to_string(sheet) + ")",
                 matched
             });
         }
@@ -222,9 +222,9 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     }
 
     if (result.elements.empty())
-        result.elements.push_back({ "No sketch symbols found on drawing", false });
+        result.elements.push_back({ "No 2D symbols found on drawing", false });
 
-    // Rule passes as soon as one sketch symbol carries either required note.
+    // Rule passes as soon as one 2D symbol carries either required note.
     result.passed = std::any_of(result.elements.begin(), result.elements.end(),
                                  [](const ElementResult& e) { return e.isInside; });
 
