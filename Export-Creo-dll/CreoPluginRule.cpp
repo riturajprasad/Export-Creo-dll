@@ -59,6 +59,32 @@ namespace
         return false;
     }
 
+    std::string NarrowFromWide(const std::wstring& wide)
+    {
+        if (wide.empty()) return std::string();
+        int len = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        if (len <= 0) return std::string();
+        std::string out(len - 1, '\0');
+        WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, out.data(), len, nullptr, nullptr);
+        return out;
+    }
+
+    // Looks up the name the symbol was given in Creo's symbol library
+    // (e.g. "BURR_NOTE"), the same name shown by Insert > Symbol in the drawing.
+    std::wstring GetSymbolDefName(ProDtlsymdef* definition)
+    {
+        ProDtlsymdefdata symdefdata = nullptr;
+        if (g_api->ProDtlsymdefDataGet(definition, &symdefdata) != PRO_TK_NO_ERROR || !symdefdata)
+            return std::wstring();
+
+        ProName name{};
+        std::wstring result;
+        if (g_api->ProDtlsymdefdataNameGet(symdefdata, name) == PRO_TK_NO_ERROR)
+            result = name;
+
+        return result;
+    }
+
     // Checks the fixed text baked into a 2D symbol's definition (the note
     // lines drawn as part of the symbol artwork) against the required phrases.
     bool DefinitionTextMatches(ProDrawing drawing, int sheet, ProDtlsymdef* definition)
@@ -138,25 +164,34 @@ namespace
         return matched;
     }
 
+    struct SymbolCheck
+    {
+        std::wstring name;   // the symbol's library name, e.g. "BURR_NOTE"
+        bool         matched;
+    };
+
     // A 2D-symbol instance passes if EITHER its symbol-definition artwork
     // text OR its per-instance variable text carries one of the required notes.
-    bool SymbolInstanceHasRequiredText(ProDrawing drawing, int sheet, ProDtlsyminst* syminst)
+    SymbolCheck SymbolInstanceHasRequiredText(ProDrawing drawing, int sheet, ProDtlsyminst* syminst)
     {
+        SymbolCheck check{ std::wstring(), false };
+
         ProDtlsyminstdata data = nullptr;
         if (g_api->ProDtlsyminstDataGet(syminst, PRODISPMODE_NUMERIC, &data) != PRO_TK_NO_ERROR || !data)
-            return false;
+            return check;
 
         ProDtlsymdef definition{};
-        bool matched = false;
-
         if (g_api->ProDtlsyminstdataDefGet(data, &definition) == PRO_TK_NO_ERROR)
-            matched = DefinitionTextMatches(drawing, sheet, &definition);
+        {
+            check.name    = GetSymbolDefName(&definition);
+            check.matched = DefinitionTextMatches(drawing, sheet, &definition);
+        }
 
-        if (!matched)
-            matched = VartextMatches(data);
+        if (!check.matched)
+            check.matched = VartextMatches(data);
 
         g_api->ProDtlsyminstdataFree(data);
-        return matched;
+        return check;
     }
 }
 
@@ -210,12 +245,13 @@ RuleCheckResult CreoPlugin::RuleFunctions()
         for (int i = 0; i < count; ++i)
         {
             ++symbolIndex;
-            const bool matched = SymbolInstanceHasRequiredText(drawing, sheet, &syminsts[i]);
+            const SymbolCheck check = SymbolInstanceHasRequiredText(drawing, sheet, &syminsts[i]);
 
-            result.elements.push_back({
-                "2D Symbol " + std::to_string(symbolIndex) + " (Sheet " + std::to_string(sheet) + ")",
-                matched
-            });
+            const std::string label = !check.name.empty()
+                ? NarrowFromWide(check.name)
+                : ("2D Symbol " + std::to_string(symbolIndex) + " (Sheet " + std::to_string(sheet) + ")");
+
+            result.elements.push_back({ label, check.matched });
         }
 
         g_api->ProArrayFree(reinterpret_cast<ProArray*>(&syminsts));
