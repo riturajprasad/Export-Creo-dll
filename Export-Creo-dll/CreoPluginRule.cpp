@@ -8,13 +8,6 @@
 // ProToolkit calls are made through the function pointers below.
 #include "CreoRuleContract.h"
 
-#ifdef min
-#undef min
-#endif
-#ifdef max
-#undef max
-#endif
-
 #include <algorithm>
 #include <cwctype>
 #include <string>
