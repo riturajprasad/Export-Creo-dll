@@ -22,6 +22,22 @@ struct CREOPLUGIN_API ElementResult
     bool        isInside;
 };
 
+// Optional request to show a user-facing popup, handled by the backend
+// (FunctionExecutor.cpp calls into CommonUtility/PopUpFunctions.h). Leave
+// `show` false (the default) if the rule needs no user interaction.
+struct CREOPLUGIN_API PopUpRequest
+{
+    bool        show         = false;  // false: no popup; backend runs the rule as usual.
+    std::string kind;                  // Required when show == true. One of:
+                                        //   "YesNo"       -> PopUpFunctions::ShowYesNoPopUp
+                                        //   "Informative" -> PopUpFunctions::ShowInformativePopUp
+                                        //   "GetInteger"  -> PopUpFunctions::GetIntegerFromUser
+    std::string message;                // Required when show == true.
+    std::string title;                  // Optional; empty uses PopUpFunctions' own default title.
+    bool        invertOutput = false;   // "YesNo" only: inverts the Yes/No -> true/false mapping.
+    std::string defaultValue = "0";     // "GetInteger" only: pre-filled value in the input box.
+};
+
 // Aggregate output for a rule check.
 struct CREOPLUGIN_API RuleCheckResult
 {
@@ -31,6 +47,7 @@ struct CREOPLUGIN_API RuleCheckResult
                                                   // false: rule passes only if ALL elements pass (all_of).
                                                   // Sent to the backend as "MatchType" so it can be
                                                   // independently verified rather than trusted blindly.
+    PopUpRequest               popUp;            // show == false by default (no popup).
 };
 
 #pragma warning(pop)

@@ -266,5 +266,12 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     result.passed = std::any_of(result.elements.begin(), result.elements.end(),
                                  [](const ElementResult& e) { return e.isInside; });
 
+    // TESTING ONLY — exercises the PopUp flow end-to-end. Yes keeps the rule
+    // passed, No puts it in the Failed section (ShowYesNoPopUp's answer
+    // replaces RuleStatus on the backend). Remove before shipping this rule.
+    result.popUp.show    = true;
+    result.popUp.kind    = "YesNo";
+    result.popUp.message = "Was this manually verified as acceptable?";
+
     return result;
 }
