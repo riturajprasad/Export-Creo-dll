@@ -22,11 +22,15 @@ struct CREOPLUGIN_API ElementResult
     bool        isInside;
 };
 
-// Aggregate output for the "Nothing outside sheet border" rule.
+// Aggregate output for a rule check.
 struct CREOPLUGIN_API RuleCheckResult
 {
-    std::vector<ElementResult> elements; // one entry per drawing entity checked
-    bool                       passed;   // true only if every element is inside
+    std::vector<ElementResult> elements;         // one entry per drawing entity checked
+    bool                       passed;           // final pass/fail, computed by this DLL
+    bool                       matchAny = true;  // true: rule passes if ANY element passes (any_of);
+                                                  // false: rule passes only if ALL elements pass (all_of).
+                                                  // Sent to the backend as "MatchType" so it can be
+                                                  // independently verified rather than trusted blindly.
 };
 
 #pragma warning(pop)

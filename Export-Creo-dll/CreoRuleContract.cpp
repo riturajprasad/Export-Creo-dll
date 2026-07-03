@@ -54,10 +54,15 @@ static std::string JEsc(const std::string& s)
 // ── Serialise RuleCheckResult → JSON ─────────────────────────────────────────
 // Produces the format that FunctionExecutor.cpp's ParseResultJson expects:
 //
-//   {"Status":bool,"Descriptions":[{"EntityName":"...","Status":bool}, ...]}
+//   {"Status":bool,"MatchType":"Any"|"All","Descriptions":[{"EntityName":"...","Status":bool}, ...]}
 //
-// where "Status" is the overall pass/fail flag and each Descriptions entry
-// maps to one ElementResult (label → EntityName, isInside → Status).
+// "Status" is this DLL's own pass/fail computation (kept for backward
+// compatibility with older backends). "MatchType" tells the backend which
+// combinator this rule intends — "Any" if the rule should pass as soon as one
+// EntityName passes, "All" if every EntityName must pass — so the backend can
+// independently re-derive the final RuleStatus from Descriptions rather than
+// trusting this DLL's Status bit blindly. Each Descriptions entry maps to one
+// ElementResult (label → EntityName, isInside → Status).
 static std::string SerialiseResult(const RuleCheckResult& res)
 {
     std::string descs;
@@ -69,6 +74,7 @@ static std::string SerialiseResult(const RuleCheckResult& res)
     }
 
     return std::string("{\"Status\":") + (res.passed ? "true" : "false") +
+           ",\"MatchType\":\"" + (res.matchAny ? "Any" : "All") + "\"" +
            ",\"Descriptions\":[" + descs + "]}";
 }
 
@@ -108,10 +114,10 @@ extern "C" {
 //         (still valid JSON so FunctionExecutor can surface the message).
 //
 // JSON payload on success:
-//   {"Status":true,"Descriptions":[{"EntityName":"DrawingView 1","Status":true}, ...]}
+//   {"Status":true,"MatchType":"Any","Descriptions":[{"EntityName":"DrawingView 1","Status":true}, ...]}
 //
 // JSON payload on failure (exception path):
-//   {"Status":false,"Descriptions":[{"EntityName":"<error text>","Status":false}]}
+//   {"Status":false,"MatchType":"Any","Descriptions":[{"EntityName":"<error text>","Status":false}]}
 __declspec(dllexport) int CreoExecuteRule(const char* /*ruleJson*/, char** resultJson)
 {
     if (!resultJson) return 1;

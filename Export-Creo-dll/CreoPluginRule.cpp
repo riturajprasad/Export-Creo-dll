@@ -262,6 +262,7 @@ RuleCheckResult CreoPlugin::RuleFunctions()
         result.elements.push_back({ "No 2D symbols found on drawing", false });
 
     // Rule passes as soon as one 2D symbol carries either required note.
+    result.matchAny = true;
     result.passed = std::any_of(result.elements.begin(), result.elements.end(),
                                  [](const ElementResult& e) { return e.isInside; });
 
