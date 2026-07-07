@@ -397,6 +397,8 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     }
 
     // 5. Check notes (including BOM balloons and leader notes)
+    // Balloons are prefixed "BL <text>" so they're always distinguishable
+    // from plain/leader notes in entityName; notes keep just their own text.
     {
         ProDtlnote* notes = nullptr;
         if (g_api->ProDrawingDtlnotesCollect(drawing, nullptr, sheet, &notes) == PRO_TK_NO_ERROR
@@ -404,18 +406,18 @@ RuleCheckResult CreoPlugin::RuleFunctions()
         {
             int count = 0;
             g_api->ProArraySizeGet((ProArray)notes, &count);
+
             for (int i = 0; i < count; ++i)
             {
                 const NoteCheck check = InspectNote(&notes[i], drawing, sheet, bMinX, bMinY, bMaxX, bMaxY);
                 if (!check.onActiveSheet)
                     continue;   // belongs to a view on a different sheet — exclude it
 
-                const char* kind = check.isBalloon ? "Balloon" : "Note";
-
                 ElementResult r;
-                r.label = !check.text.empty()
-                    ? NarrowFromWide(check.text)
-                    : (std::string(kind) + " " + std::to_string(i + 1));
+                if (check.isBalloon)
+                    r.label = check.text.empty() ? "BL" : "BL " + NarrowFromWide(check.text);
+                else
+                    r.label = check.text.empty() ? "Note" : NarrowFromWide(check.text);
                 r.isInside = check.isInside;
                 result.elements.push_back(r);
             }
