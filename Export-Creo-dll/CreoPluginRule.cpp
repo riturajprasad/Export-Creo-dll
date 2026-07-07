@@ -88,10 +88,14 @@ namespace
 
     struct NoteCheck
     {
-        std::wstring text;                // the note's rendered text, used as its name
-        bool         isBalloon = false;   // true if a leader is anchored to an assembly component
-        bool         isInside  = true;    // fully within the sheet format border
-        bool         onActiveSheet = true; // false only if a view attachment proves otherwise
+        std::wstring text;                 // the note's rendered text, used as its name
+        bool         isBalloon     = false; // true if a leader is anchored to an assembly component
+        bool         isInside      = true;  // fully within the sheet format border
+        bool         onActiveSheet = true;  // false only if a view attachment proves otherwise
+        bool         isTableCell   = false; // belongs to a drawing table cell (BOM row, hole table, ...)
+        bool         isModelDriven = false; // mirrors a note authored in the 3D model, not the sheet
+        bool         hasSymbol     = false; // has a detail symbol instance embedded in its text
+        bool         hasLeader     = false; // has at least one leader (balloon or attached to geometry)
     };
 
     // Checks a note's line envelopes and leader attachment points against the
@@ -103,9 +107,35 @@ namespace
     // balloons — ProBomballoon.h only exposes creation/cleanup calls — so a
     // balloon is read back the same way any other note is.
     NoteCheck InspectNote(ProDtlnote* note, ProDrawing drawing, int targetSheet,
+                          ProDwgtable* tables, int tableCount,
                           double bMinX, double bMinY, double bMaxX, double bMaxY)
     {
         NoteCheck check;
+
+        for (int t = 0; t < tableCount && !check.isTableCell; ++t)
+        {
+            int row = 0, col = 0;
+            if (g_api->ProDtlnoteTableCellGet(note, &tables[t], &row, &col) == PRO_TK_NO_ERROR)
+                check.isTableCell = true;
+        }
+
+        {
+            ProMdl refModel = nullptr;
+            if (g_api->ProDtlnoteModelrefGet(note, nullptr, 1, 1, &refModel) == PRO_TK_NO_ERROR
+                && refModel)
+                check.isModelDriven = true;
+        }
+
+        {
+            ProDtlsyminst* syminsts = nullptr;
+            if (g_api->ProDtlnoteDtlsyminstsCollect(note, &syminsts) == PRO_TK_NO_ERROR && syminsts)
+            {
+                int symCount = 0;
+                g_api->ProArraySizeGet((ProArray)syminsts, &symCount);
+                check.hasSymbol = symCount > 0;
+                g_api->ProArrayFree((ProArray*)&syminsts);
+            }
+        }
 
         // A note's view (if it has one) unambiguously ties it to a sheet, the
         // same way ViewFilterCb/DimFilterCb pin views/dimensions to a sheet.
@@ -184,6 +214,7 @@ namespace
         {
             int count = 0;
             g_api->ProArraySizeGet((ProArray)leaders, &count);
+            check.hasLeader = count > 0;
             for (int i = 0; i < count; ++i)
             {
                 ProDtlattachType atype;
@@ -398,8 +429,14 @@ RuleCheckResult CreoPlugin::RuleFunctions()
 
     // 5. Check notes (including BOM balloons and leader notes)
     // Balloons are prefixed "BL <text>" so they're always distinguishable
-    // from plain/leader notes in entityName; notes keep just their own text.
+    // from plain/leader notes in entityName; every other category falls
+    // back to a category label only when it has no rendered text of its own.
     {
+        ProDwgtable* tables = nullptr;
+        int tableCount = 0;
+        if (g_api->ProDrawingTablesCollect(drawing, &tables) == PRO_TK_NO_ERROR && tables)
+            g_api->ProArraySizeGet((ProArray)tables, &tableCount);
+
         ProDtlnote* notes = nullptr;
         if (g_api->ProDrawingDtlnotesCollect(drawing, nullptr, sheet, &notes) == PRO_TK_NO_ERROR
             && notes)
@@ -409,20 +446,32 @@ RuleCheckResult CreoPlugin::RuleFunctions()
 
             for (int i = 0; i < count; ++i)
             {
-                const NoteCheck check = InspectNote(&notes[i], drawing, sheet, bMinX, bMinY, bMaxX, bMaxY);
+                const NoteCheck check = InspectNote(&notes[i], drawing, sheet, tables, tableCount,
+                                                     bMinX, bMinY, bMaxX, bMaxY);
                 if (!check.onActiveSheet)
                     continue;   // belongs to a view on a different sheet — exclude it
 
                 ElementResult r;
                 if (check.isBalloon)
-                    r.label = check.text.empty() ? "BL" : "BL " + NarrowFromWide(check.text);
+                    r.label = check.text.empty() ? "" : "BL: " + NarrowFromWide(check.text); // BL for "Balloon Note"
+                else if (check.isTableCell)
+                    r.label = check.text.empty() ? "" : "TC: " + NarrowFromWide(check.text); // TC for "Table Cell Note"
+                else if (check.isModelDriven)
+                    r.label = check.text.empty() ? "" : "MD: " + NarrowFromWide(check.text); // MD for "Model Note"
+                else if (check.hasSymbol)
+                    r.label = check.text.empty() ? "" : "SY: " + NarrowFromWide(check.text); // SY for "Symbol Note"
+                else if (check.hasLeader)
+                    r.label = check.text.empty() ? "" : "LD: " + NarrowFromWide(check.text); // LD for "Leader Note"
                 else
-                    r.label = check.text.empty() ? "Note" : NarrowFromWide(check.text);
+                    r.label = check.text.empty() ? "" : "NT: " + NarrowFromWide(check.text); // NT for "Note"
                 r.isInside = check.isInside;
                 result.elements.push_back(r);
             }
             g_api->ProArrayFree((ProArray*)&notes);
         }
+
+        if (tables)
+            g_api->ProArrayFree((ProArray*)&tables);
     }
 
     // 6. Check dimensions
