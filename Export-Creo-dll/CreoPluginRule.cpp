@@ -71,27 +71,19 @@ namespace
         return std::wstring(name);
     }
 
-    // The dimension's symbolic text (e.g. "d12"), i.e. the identifier Creo
-    // itself uses for the dimension, rather than a made-up counter.
+    // The dimension's symbolic name (e.g. "d12", or "add912" if the user has
+    // renamed it in Creo via Tools > Parameters / rename-dimension). This is
+    // the identifier Creo itself uses for the dimension.
+    //
+    // Note: ProDimensionSymtextGet returns the dimension's *displayed value
+    // text* (e.g. "12.50"), not its name — using it here was the bug that
+    // caused custom dimension names to never appear.
     std::wstring GetDimensionSymbolText(ProDimension* dim)
     {
-        ProLine* lines = nullptr;
-        if (g_api->ProDimensionSymtextGet(dim, &lines) != PRO_TK_NO_ERROR || !lines)
+        ProName symbol{};
+        if (g_api->ProDimensionSymbolGet(dim, symbol) != PRO_TK_NO_ERROR)
             return std::wstring();
-
-        int count = 0;
-        g_api->ProArraySizeGet((ProArray)lines, &count);
-
-        std::wstring text;
-        for (int i = 0; i < count; ++i)
-        {
-            if (!text.empty())
-                text += L" ";
-            text += lines[i];
-        }
-
-        g_api->ProArrayFree((ProArray*)&lines);
-        return text;
+        return std::wstring(symbol);
     }
 
     struct NoteCheck
