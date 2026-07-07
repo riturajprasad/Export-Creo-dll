@@ -91,6 +91,7 @@ namespace
         std::wstring text;                // the note's rendered text, used as its name
         bool         isBalloon = false;   // true if a leader is anchored to an assembly component
         bool         isInside  = true;    // fully within the sheet format border
+        bool         onActiveSheet = true; // false only if a view attachment proves otherwise
     };
 
     // Checks a note's line envelopes and leader attachment points against the
@@ -101,10 +102,24 @@ namespace
     // nowhere at all. There is no dedicated ProToolkit query for existing
     // balloons — ProBomballoon.h only exposes creation/cleanup calls — so a
     // balloon is read back the same way any other note is.
-    NoteCheck InspectNote(ProDtlnote* note,
+    NoteCheck InspectNote(ProDtlnote* note, ProDrawing drawing, int targetSheet,
                           double bMinX, double bMinY, double bMaxX, double bMaxY)
     {
         NoteCheck check;
+
+        // A note's view (if it has one) unambiguously ties it to a sheet, the
+        // same way ViewFilterCb/DimFilterCb pin views/dimensions to a sheet.
+        // Free-floating notes (no view attachment) have no such check and are
+        // trusted to be the ones ProDrawingDtlnotesCollect returned for this sheet.
+        auto CheckViewSheet = [&](ProView view)
+        {
+            if (!view)
+                return;
+            int viewSheet = 0;
+            if (g_api->ProDrawingViewSheetGet(drawing, view, &viewSheet) == PRO_TK_NO_ERROR
+                && viewSheet != targetSheet)
+                check.onActiveSheet = false;
+        };
 
         for (int line = 1; ; ++line)
         {
@@ -120,6 +135,20 @@ namespace
         if (g_api->ProDtlnoteDataGet(note, nullptr, PRODISPMODE_NUMERIC, &notedata) != PRO_TK_NO_ERROR
             || !notedata)
             return check;
+
+        {
+            ProDtlattach mainAttach = nullptr;
+            if (g_api->ProDtlnotedataAttachmentGet(notedata, &mainAttach) == PRO_TK_NO_ERROR
+                && mainAttach)
+            {
+                ProDtlattachType atype;
+                ProView          aview;
+                ProVector        aloc;
+                ProSelection     asel;
+                if (g_api->ProDtlattachGet(mainAttach, &atype, &aview, aloc, &asel) == PRO_TK_NO_ERROR)
+                    CheckViewSheet(aview);
+            }
+        }
 
         ProDtlnoteline* lines = nullptr;
         if (g_api->ProDtlnotedataLinesCollect(notedata, &lines) == PRO_TK_NO_ERROR && lines)
@@ -163,6 +192,8 @@ namespace
                 ProSelection     asel;
                 if (g_api->ProDtlattachGet(leaders[i], &atype, &aview, aloc, &asel) != PRO_TK_NO_ERROR)
                     continue;
+
+                CheckViewSheet(aview);
 
                 if (!PointInBorder(aloc[0], aloc[1], bMinX, bMinY, bMaxX, bMaxY))
                     check.isInside = false;
@@ -375,7 +406,10 @@ RuleCheckResult CreoPlugin::RuleFunctions()
             g_api->ProArraySizeGet((ProArray)notes, &count);
             for (int i = 0; i < count; ++i)
             {
-                const NoteCheck check = InspectNote(&notes[i], bMinX, bMinY, bMaxX, bMaxY);
+                const NoteCheck check = InspectNote(&notes[i], drawing, sheet, bMinX, bMinY, bMaxX, bMaxY);
+                if (!check.onActiveSheet)
+                    continue;   // belongs to a view on a different sheet — exclude it
+
                 const char* kind = check.isBalloon ? "Balloon" : "Note";
 
                 ElementResult r;
