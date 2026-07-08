@@ -168,6 +168,7 @@ namespace
                           const ProMatrix& sheetTrf)
     {
         NoteCheck check;
+        std::string diag;   // DEBUG: raw/transformed points for Balloon & Leader Note cases, flushed at the end
 
         for (int t = 0; t < tableCount && !check.isTableCell; ++t)
         {
@@ -214,8 +215,17 @@ namespace
             if (g_api->ProDtlnoteLineEnvelopeGet(note, line, env) != PRO_TK_NO_ERROR)
                 break;
             for (int c = 0; c < 4; ++c)
-                if (!PointInBorderScreen(sheetTrf, env[c], bMinX, bMinY, bMaxX, bMaxY))
+            {
+                double x, y;
+                ScreenToDrawing(sheetTrf, env[c], x, y);
+                bool ok = PointInBorder(x, y, bMinX, bMinY, bMaxX, bMaxY);
+                if (!ok)
                     check.isInside = false;
+                char buf[160];
+                snprintf(buf, sizeof(buf), "line%d.pt%d raw=%s -> %s %s; ",
+                         line, c, PtStr(env[c]).c_str(), XyStr(x, y).c_str(), ok ? "[OK]" : "[OUT]");
+                diag += buf;
+            }
         }
 
         ProDtlnotedata notedata = nullptr;
@@ -283,8 +293,33 @@ namespace
 
                 CheckViewSheet(aview);
 
-                if (!PointInBorderScreen(sheetTrf, aloc, bMinX, bMinY, bMaxX, bMaxY))
-                    check.isInside = false;
+                // Per ProDtlattachGet: `location` (aloc) is only populated
+                // when type is FREE, OFFSET, or UNIMPLEMENTED. Balloons and
+                // other geometry-anchored leaders use PARAMETRIC attachment,
+                // where the real position lives in `asel` (attach_point),
+                // not `aloc` — aloc reads back as (0,0,0) in that case and
+                // must not be used, or every such leader falsely fails.
+                bool hasLocation = (atype == PRO_DTLATTACHTYPE_FREE
+                                  || atype == PRO_DTLATTACHTYPE_OFFSET
+                                  || atype == PRO_DTLATTACHTYPE_UNIMPLEMENTED);
+
+                char buf[160];
+                if (hasLocation)
+                {
+                    double ax, ay;
+                    ScreenToDrawing(sheetTrf, aloc, ax, ay);
+                    bool ok = PointInBorder(ax, ay, bMinX, bMinY, bMaxX, bMaxY);
+                    if (!ok)
+                        check.isInside = false;
+                    snprintf(buf, sizeof(buf), "leader%d raw=%s -> %s %s; ",
+                             i, PtStr(aloc).c_str(), XyStr(ax, ay).c_str(), ok ? "[OK]" : "[OUT]");
+                }
+                else
+                {
+                    snprintf(buf, sizeof(buf), "leader%d PARAMETRIC (type=%d) -- no location data, skipped; ",
+                             i, (int)atype);
+                }
+                diag += buf;
 
                 ProAsmcomppath compPath{};
                 if (g_api->ProSelectionAsmcomppathGet(asel, &compPath) == PRO_TK_NO_ERROR
@@ -292,6 +327,15 @@ namespace
                     check.isBalloon = true;
             }
             g_api->ProArrayFree((ProArray*)&leaders);
+        }
+
+        // DEBUG: only Balloon / Leader Note entries are noisy right now —
+        // flush the accumulated raw/transformed point diagnostics for those.
+        if (check.isBalloon || check.hasLeader)
+        {
+            std::string label = check.text.empty() ? "(no text)" : NarrowFromWide(check.text);
+            std::string tag = check.isBalloon ? "[Balloon]" : "[LeaderNote]";
+            DebugLog(tag + " " + label + " -- " + diag + " FINAL isInside=" + (check.isInside ? "1" : "0"));
         }
 
         g_api->ProDtlnotedataFree(notedata);
@@ -349,19 +393,6 @@ namespace
             double vMaxY = std::max(p0y, p1y);
             r.isInside = RectInBorder(vMinX, vMinY, vMaxX, vMaxY,
                                        d->bMinX, d->bMinY, d->bMaxX, d->bMaxY);
-
-            char buf[400];
-            snprintf(buf, sizeof(buf),
-                     "[View] %-20s raw=%s,%s -> drawing=%s,%s  border=(0,0)-(%.4f,%.4f)  inside=%d",
-                     r.label.c_str(),
-                     PtStr(outline[0]).c_str(), PtStr(outline[1]).c_str(),
-                     XyStr(p0x, p0y).c_str(), XyStr(p1x, p1y).c_str(),
-                     d->bMaxX, d->bMaxY, (int)r.isInside);
-            DebugLog(buf);
-        }
-        else
-        {
-            DebugLog("[View] " + r.label + " -- ProDrawingViewOutlineGet FAILED");
         }
 
         d->out->push_back(r);
@@ -408,7 +439,6 @@ namespace
         ProView view;
         if (g_api->ProDrawingDimensionViewGet(d->drawing, dim, &view) != PRO_TK_NO_ERROR)
         {
-            DebugLog("[Dim] " + r.label + " -- ProDrawingDimensionViewGet FAILED (no view)");
             d->out->push_back(r);
             return PRO_TK_NO_ERROR;
         }
@@ -418,18 +448,13 @@ namespace
         // drawing is supplied, view must be NULL. `view` above is only used
         // to confirm the dimension is displayed on a view.
         ProDimlocation loc = nullptr;
-        ProError locErr = g_api->ProDimensionLocationGet(dim, nullptr, d->drawing, &loc);
-        if (locErr != PRO_TK_NO_ERROR || !loc)
+        if (g_api->ProDimensionLocationGet(dim, nullptr, d->drawing, &loc) != PRO_TK_NO_ERROR || !loc)
         {
-            char buf[128];
-            snprintf(buf, sizeof(buf), "[Dim] %s -- ProDimensionLocationGet FAILED, err=%d", r.label.c_str(), (int)locErr);
-            DebugLog(buf);
             d->out->push_back(r);
             return PRO_TK_NO_ERROR;
         }
 
         r.isInside = true;
-        std::string logLine = "[Dim] " + r.label + ": ";
 
         // ProDimlocation*Get points are in screen coordinates, same as the
         // other drawing-entity position queries — convert before comparing.
@@ -438,61 +463,26 @@ namespace
             ProPoint3d textPt;
             double     elbowLen;
             if (g_api->ProDimlocationTextGet(loc, &hasElbow, textPt, &elbowLen) == PRO_TK_NO_ERROR)
-            {
-                double x, y;
-                ScreenToDrawing(*d->sheetTrf, textPt, x, y);
-                bool ok = PointInBorder(x, y, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY);
-                logLine += "text raw=" + PtStr(textPt) + " -> " + XyStr(x, y) + (ok ? " [OK] " : " [OUT] ");
-                if (!ok) r.isInside = false;
-            }
-            else
-            {
-                logLine += "text=N/A ";
-            }
+                if (!PointInBorderScreen(*d->sheetTrf, textPt,
+                                         d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
+                    r.isInside = false;
         }
-        if (true)
+        if (r.isInside)
         {
             ProPoint3d arr1, arr2;
             if (g_api->ProDimlocationArrowsGet(loc, arr1, arr2) == PRO_TK_NO_ERROR)
-            {
-                double x1, y1, x2, y2;
-                ScreenToDrawing(*d->sheetTrf, arr1, x1, y1);
-                ScreenToDrawing(*d->sheetTrf, arr2, x2, y2);
-                bool ok = PointInBorder(x1, y1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY)
-                       && PointInBorder(x2, y2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY);
-                logLine += "arrows raw=" + PtStr(arr1) + "," + PtStr(arr2)
-                         + " -> " + XyStr(x1, y1) + "," + XyStr(x2, y2) + (ok ? " [OK] " : " [OUT] ");
-                if (!ok) r.isInside = false;
-            }
-            else
-            {
-                logLine += "arrows=N/A ";
-            }
+                if (!PointInBorderScreen(*d->sheetTrf, arr1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY) ||
+                    !PointInBorderScreen(*d->sheetTrf, arr2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
+                    r.isInside = false;
         }
-        if (true)
+        if (r.isInside)
         {
             ProPoint3d wl1, wl2;
             if (g_api->ProDimlocationWitnesslinesGet(loc, wl1, wl2) == PRO_TK_NO_ERROR)
-            {
-                double x1, y1, x2, y2;
-                ScreenToDrawing(*d->sheetTrf, wl1, x1, y1);
-                ScreenToDrawing(*d->sheetTrf, wl2, x2, y2);
-                bool ok = PointInBorder(x1, y1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY)
-                       && PointInBorder(x2, y2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY);
-                logLine += "witness raw=" + PtStr(wl1) + "," + PtStr(wl2)
-                         + " -> " + XyStr(x1, y1) + "," + XyStr(x2, y2) + (ok ? " [OK] " : " [OUT] ");
-                if (!ok) r.isInside = false;
-            }
-            else
-            {
-                logLine += "witness=N/A ";
-            }
+                if (!PointInBorderScreen(*d->sheetTrf, wl1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY) ||
+                    !PointInBorderScreen(*d->sheetTrf, wl2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
+                    r.isInside = false;
         }
-
-        char borderBuf[64];
-        snprintf(borderBuf, sizeof(borderBuf), " border=(0,0)-(%.4f,%.4f) FINAL=%d", d->bMaxX, d->bMaxY, (int)r.isInside);
-        logLine += borderBuf;
-        DebugLog(logLine);
 
         g_api->ProDimlocationFree(loc);
         d->out->push_back(r);
