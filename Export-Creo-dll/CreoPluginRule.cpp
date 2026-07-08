@@ -16,6 +16,7 @@
 #endif
 
 #include <algorithm>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -80,6 +81,40 @@ namespace
         double x, y;
         ScreenToDrawing(trf, in, x, y);
         return PointInBorder(x, y, bMinX, bMinY, bMaxX, bMaxY);
+    }
+
+    // ── TEMPORARY DIAGNOSTIC LOGGING ────────────────────────────────────────
+    // Writes raw vs. transformed coordinates to %TEMP%\CreoPluginRule_debug.log
+    // so real numbers from a live Creo session can be compared against the
+    // sheet border, instead of guessing the screen->drawing transform blind.
+    // Remove this whole block once the containment checks are confirmed correct.
+    void DebugLog(const std::string& line)
+    {
+        wchar_t tempPath[MAX_PATH]{};
+        if (GetTempPathW(MAX_PATH, tempPath) == 0)
+            return;
+        std::wstring path = std::wstring(tempPath) + L"CreoPluginRule_debug.log";
+        FILE* f = nullptr;
+        if (_wfopen_s(&f, path.c_str(), L"a") == 0 && f)
+        {
+            fputs(line.c_str(), f);
+            fputs("\n", f);
+            fclose(f);
+        }
+    }
+
+    std::string PtStr(const double p[3])
+    {
+        char buf[96];
+        snprintf(buf, sizeof(buf), "(%.4f, %.4f, %.4f)", p[0], p[1], p[2]);
+        return buf;
+    }
+
+    std::string XyStr(double x, double y)
+    {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "(%.4f, %.4f)", x, y);
+        return buf;
     }
 
     // The view's own name in Creo (e.g. "FRONT", "SECTION_A"), the same name
@@ -314,6 +349,19 @@ namespace
             double vMaxY = std::max(p0y, p1y);
             r.isInside = RectInBorder(vMinX, vMinY, vMaxX, vMaxY,
                                        d->bMinX, d->bMinY, d->bMaxX, d->bMaxY);
+
+            char buf[400];
+            snprintf(buf, sizeof(buf),
+                     "[View] %-20s raw=%s,%s -> drawing=%s,%s  border=(0,0)-(%.4f,%.4f)  inside=%d",
+                     r.label.c_str(),
+                     PtStr(outline[0]).c_str(), PtStr(outline[1]).c_str(),
+                     XyStr(p0x, p0y).c_str(), XyStr(p1x, p1y).c_str(),
+                     d->bMaxX, d->bMaxY, (int)r.isInside);
+            DebugLog(buf);
+        }
+        else
+        {
+            DebugLog("[View] " + r.label + " -- ProDrawingViewOutlineGet FAILED");
         }
 
         d->out->push_back(r);
@@ -360,6 +408,7 @@ namespace
         ProView view;
         if (g_api->ProDrawingDimensionViewGet(d->drawing, dim, &view) != PRO_TK_NO_ERROR)
         {
+            DebugLog("[Dim] " + r.label + " -- ProDrawingDimensionViewGet FAILED (no view)");
             d->out->push_back(r);
             return PRO_TK_NO_ERROR;
         }
@@ -369,13 +418,18 @@ namespace
         // drawing is supplied, view must be NULL. `view` above is only used
         // to confirm the dimension is displayed on a view.
         ProDimlocation loc = nullptr;
-        if (g_api->ProDimensionLocationGet(dim, nullptr, d->drawing, &loc) != PRO_TK_NO_ERROR || !loc)
+        ProError locErr = g_api->ProDimensionLocationGet(dim, nullptr, d->drawing, &loc);
+        if (locErr != PRO_TK_NO_ERROR || !loc)
         {
+            char buf[128];
+            snprintf(buf, sizeof(buf), "[Dim] %s -- ProDimensionLocationGet FAILED, err=%d", r.label.c_str(), (int)locErr);
+            DebugLog(buf);
             d->out->push_back(r);
             return PRO_TK_NO_ERROR;
         }
 
         r.isInside = true;
+        std::string logLine = "[Dim] " + r.label + ": ";
 
         // ProDimlocation*Get points are in screen coordinates, same as the
         // other drawing-entity position queries — convert before comparing.
@@ -384,26 +438,61 @@ namespace
             ProPoint3d textPt;
             double     elbowLen;
             if (g_api->ProDimlocationTextGet(loc, &hasElbow, textPt, &elbowLen) == PRO_TK_NO_ERROR)
-                if (!PointInBorderScreen(*d->sheetTrf, textPt,
-                                         d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
-                    r.isInside = false;
+            {
+                double x, y;
+                ScreenToDrawing(*d->sheetTrf, textPt, x, y);
+                bool ok = PointInBorder(x, y, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY);
+                logLine += "text raw=" + PtStr(textPt) + " -> " + XyStr(x, y) + (ok ? " [OK] " : " [OUT] ");
+                if (!ok) r.isInside = false;
+            }
+            else
+            {
+                logLine += "text=N/A ";
+            }
         }
-        if (r.isInside)
+        if (true)
         {
             ProPoint3d arr1, arr2;
             if (g_api->ProDimlocationArrowsGet(loc, arr1, arr2) == PRO_TK_NO_ERROR)
-                if (!PointInBorderScreen(*d->sheetTrf, arr1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY) ||
-                    !PointInBorderScreen(*d->sheetTrf, arr2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
-                    r.isInside = false;
+            {
+                double x1, y1, x2, y2;
+                ScreenToDrawing(*d->sheetTrf, arr1, x1, y1);
+                ScreenToDrawing(*d->sheetTrf, arr2, x2, y2);
+                bool ok = PointInBorder(x1, y1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY)
+                       && PointInBorder(x2, y2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY);
+                logLine += "arrows raw=" + PtStr(arr1) + "," + PtStr(arr2)
+                         + " -> " + XyStr(x1, y1) + "," + XyStr(x2, y2) + (ok ? " [OK] " : " [OUT] ");
+                if (!ok) r.isInside = false;
+            }
+            else
+            {
+                logLine += "arrows=N/A ";
+            }
         }
-        if (r.isInside)
+        if (true)
         {
             ProPoint3d wl1, wl2;
             if (g_api->ProDimlocationWitnesslinesGet(loc, wl1, wl2) == PRO_TK_NO_ERROR)
-                if (!PointInBorderScreen(*d->sheetTrf, wl1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY) ||
-                    !PointInBorderScreen(*d->sheetTrf, wl2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
-                    r.isInside = false;
+            {
+                double x1, y1, x2, y2;
+                ScreenToDrawing(*d->sheetTrf, wl1, x1, y1);
+                ScreenToDrawing(*d->sheetTrf, wl2, x2, y2);
+                bool ok = PointInBorder(x1, y1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY)
+                       && PointInBorder(x2, y2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY);
+                logLine += "witness raw=" + PtStr(wl1) + "," + PtStr(wl2)
+                         + " -> " + XyStr(x1, y1) + "," + XyStr(x2, y2) + (ok ? " [OK] " : " [OUT] ");
+                if (!ok) r.isInside = false;
+            }
+            else
+            {
+                logLine += "witness=N/A ";
+            }
         }
+
+        char borderBuf[64];
+        snprintf(borderBuf, sizeof(borderBuf), " border=(0,0)-(%.4f,%.4f) FINAL=%d", d->bMaxX, d->bMaxY, (int)r.isInside);
+        logLine += borderBuf;
+        DebugLog(logLine);
 
         g_api->ProDimlocationFree(loc);
         d->out->push_back(r);
@@ -443,20 +532,39 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     if (g_api->ProDrawingCurrentSheetGet(drawing, &sheet) != PRO_TK_NO_ERROR)
         return result;
 
-    // 3. Determine border extents
+    // 3. Determine border extents.
+    // ProDrawingSheetSizeGet returns the size "in the sheet units" — the same
+    // unit system every other position in this file ends up in after the
+    // screen->drawing transform. ProDrawingFormatSizeGet, by contrast, is
+    // documented to always return its width/height IN INCHES regardless of
+    // the drawing's actual units — on a metric (mm) drawing that silently
+    // produces a border ~25x too small and every entity fails containment.
+    // So SheetSizeGet is tried first; FormatSizeGet is only a last-resort
+    // fallback (and may still be unit-mismatched if it's the one that succeeds).
     ProPlotPaperSize paperSize;
     double           borderW = 0.0, borderH = 0.0;
+    bool             borderFromInches = false;
 
-    if (g_api->ProDrawingFormatSizeGet(drawing, sheet, &paperSize, &borderW, &borderH) != PRO_TK_NO_ERROR
+    if (g_api->ProDrawingSheetSizeGet(drawing, sheet, &paperSize, &borderW, &borderH) != PRO_TK_NO_ERROR
         || borderW <= 0.0 || borderH <= 0.0)
     {
-        if (g_api->ProDrawingSheetSizeGet(drawing, sheet, &paperSize, &borderW, &borderH) != PRO_TK_NO_ERROR
+        if (g_api->ProDrawingFormatSizeGet(drawing, sheet, &paperSize, &borderW, &borderH) != PRO_TK_NO_ERROR
             || borderW <= 0.0 || borderH <= 0.0)
             return result;
+        borderFromInches = true;
     }
 
     const double bMinX = 0.0, bMinY = 0.0;
     const double bMaxX = borderW, bMaxY = borderH;
+
+    {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "\n=== Rule run: sheet=%d border=(0,0)-(%.4f,%.4f) [source: %s] ===",
+                 sheet, borderW, borderH,
+                 borderFromInches ? "ProDrawingFormatSizeGet - INCHES, may be unit-mismatched"
+                                   : "ProDrawingSheetSizeGet - sheet units");
+        DebugLog(buf);
+    }
 
     // 3b. Screen-coordinate -> drawing-coordinate transform for this sheet.
     // View outlines, note envelopes/leaders, and dimension text/arrow/witness
@@ -465,8 +573,24 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     // without this conversion those points can never be compared correctly.
     ProMatrix sheetTrf;
     ProName   sheetSizeName{};
-    if (g_api->ProDrawingSheetTrfGet(drawing, sheet, sheetSizeName, sheetTrf) != PRO_TK_NO_ERROR)
-        return result;
+    bool haveSheetTrf = (g_api->ProDrawingSheetTrfGet(drawing, sheet, sheetSizeName, sheetTrf) == PRO_TK_NO_ERROR);
+    if (!haveSheetTrf)
+    {
+        DebugLog("ProDrawingSheetTrfGet FAILED — falling back to identity (no screen->drawing conversion).");
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 4; ++j)
+                sheetTrf[i][j] = (i == j) ? 1.0 : 0.0;
+    }
+
+    {
+        char buf[256];
+        for (int i = 0; i < 4; ++i)
+        {
+            snprintf(buf, sizeof(buf), "sheetTrf row%d = (%.6f, %.6f, %.6f, %.6f)", i,
+                     sheetTrf[i][0], sheetTrf[i][1], sheetTrf[i][2], sheetTrf[i][3]);
+            DebugLog(buf);
+        }
+    }
 
     // 4. Check drawing views
     {
