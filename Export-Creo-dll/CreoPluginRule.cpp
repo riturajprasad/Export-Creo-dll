@@ -16,7 +16,6 @@
 #endif
 
 #include <algorithm>
-#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -83,40 +82,6 @@ namespace
         return PointInBorder(x, y, bMinX, bMinY, bMaxX, bMaxY);
     }
 
-    // ── TEMPORARY DIAGNOSTIC LOGGING ────────────────────────────────────────
-    // Writes raw vs. transformed coordinates to %TEMP%\CreoPluginRule_debug.log
-    // so real numbers from a live Creo session can be compared against the
-    // sheet border, instead of guessing the screen->drawing transform blind.
-    // Remove this whole block once the containment checks are confirmed correct.
-    void DebugLog(const std::string& line)
-    {
-        wchar_t tempPath[MAX_PATH]{};
-        if (GetTempPathW(MAX_PATH, tempPath) == 0)
-            return;
-        std::wstring path = std::wstring(tempPath) + L"CreoPluginRule_debug.log";
-        FILE* f = nullptr;
-        if (_wfopen_s(&f, path.c_str(), L"a") == 0 && f)
-        {
-            fputs(line.c_str(), f);
-            fputs("\n", f);
-            fclose(f);
-        }
-    }
-
-    std::string PtStr(const double p[3])
-    {
-        char buf[96];
-        snprintf(buf, sizeof(buf), "(%.4f, %.4f, %.4f)", p[0], p[1], p[2]);
-        return buf;
-    }
-
-    std::string XyStr(double x, double y)
-    {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "(%.4f, %.4f)", x, y);
-        return buf;
-    }
-
     // The view's own name in Creo (e.g. "FRONT", "SECTION_A"), the same name
     // shown by right-click > Properties on the view.
     std::wstring GetViewName(ProDrawing drawing, ProView view)
@@ -168,7 +133,6 @@ namespace
                           const ProMatrix& sheetTrf)
     {
         NoteCheck check;
-        std::string diag;   // DEBUG: raw/transformed points for Balloon & Leader Note cases, flushed at the end
 
         for (int t = 0; t < tableCount && !check.isTableCell; ++t)
         {
@@ -215,17 +179,8 @@ namespace
             if (g_api->ProDtlnoteLineEnvelopeGet(note, line, env) != PRO_TK_NO_ERROR)
                 break;
             for (int c = 0; c < 4; ++c)
-            {
-                double x, y;
-                ScreenToDrawing(sheetTrf, env[c], x, y);
-                bool ok = PointInBorder(x, y, bMinX, bMinY, bMaxX, bMaxY);
-                if (!ok)
+                if (!PointInBorderScreen(sheetTrf, env[c], bMinX, bMinY, bMaxX, bMaxY))
                     check.isInside = false;
-                char buf[160];
-                snprintf(buf, sizeof(buf), "line%d.pt%d raw=%s -> %s %s; ",
-                         line, c, PtStr(env[c]).c_str(), XyStr(x, y).c_str(), ok ? "[OK]" : "[OUT]");
-                diag += buf;
-            }
         }
 
         ProDtlnotedata notedata = nullptr;
@@ -303,23 +258,8 @@ namespace
                                   || atype == PRO_DTLATTACHTYPE_OFFSET
                                   || atype == PRO_DTLATTACHTYPE_UNIMPLEMENTED);
 
-                char buf[160];
-                if (hasLocation)
-                {
-                    double ax, ay;
-                    ScreenToDrawing(sheetTrf, aloc, ax, ay);
-                    bool ok = PointInBorder(ax, ay, bMinX, bMinY, bMaxX, bMaxY);
-                    if (!ok)
-                        check.isInside = false;
-                    snprintf(buf, sizeof(buf), "leader%d raw=%s -> %s %s; ",
-                             i, PtStr(aloc).c_str(), XyStr(ax, ay).c_str(), ok ? "[OK]" : "[OUT]");
-                }
-                else
-                {
-                    snprintf(buf, sizeof(buf), "leader%d PARAMETRIC (type=%d) -- no location data, skipped; ",
-                             i, (int)atype);
-                }
-                diag += buf;
+                if (hasLocation && !PointInBorderScreen(sheetTrf, aloc, bMinX, bMinY, bMaxX, bMaxY))
+                    check.isInside = false;
 
                 ProAsmcomppath compPath{};
                 if (g_api->ProSelectionAsmcomppathGet(asel, &compPath) == PRO_TK_NO_ERROR
@@ -327,15 +267,6 @@ namespace
                     check.isBalloon = true;
             }
             g_api->ProArrayFree((ProArray*)&leaders);
-        }
-
-        // DEBUG: only Balloon / Leader Note entries are noisy right now —
-        // flush the accumulated raw/transformed point diagnostics for those.
-        if (check.isBalloon || check.hasLeader)
-        {
-            std::string label = check.text.empty() ? "(no text)" : NarrowFromWide(check.text);
-            std::string tag = check.isBalloon ? "[Balloon]" : "[LeaderNote]";
-            DebugLog(tag + " " + label + " -- " + diag + " FINAL isInside=" + (check.isInside ? "1" : "0"));
         }
 
         g_api->ProDtlnotedataFree(notedata);
@@ -456,6 +387,15 @@ namespace
 
         r.isInside = true;
 
+        // Per ProDimlocationArrowsGet's own docs: "arrow_2 ... Should be
+        // ignored if the dimension type would have only one arrowhead."
+        // RADIUS/DIAMETER dimensions are the classic single-arrowhead case —
+        // arrow_2 comes back as unrelated placeholder data for them, so it
+        // must not be border-checked, or every such dimension false-fails.
+        ProDimensiontype dimType = PRODIMTYPE_UNKNOWN;
+        g_api->ProDimensionTypeGet(dim, &dimType);
+        bool singleArrowhead = (dimType == PRODIMTYPE_RADIUS || dimType == PRODIMTYPE_DIAMETER);
+
         // ProDimlocation*Get points are in screen coordinates, same as the
         // other drawing-entity position queries — convert before comparing.
         {
@@ -471,9 +411,19 @@ namespace
         {
             ProPoint3d arr1, arr2;
             if (g_api->ProDimlocationArrowsGet(loc, arr1, arr2) == PRO_TK_NO_ERROR)
-                if (!PointInBorderScreen(*d->sheetTrf, arr1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY) ||
-                    !PointInBorderScreen(*d->sheetTrf, arr2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
-                    r.isInside = false;
+            {
+                if (singleArrowhead)
+                {
+                    if (!PointInBorderScreen(*d->sheetTrf, arr1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
+                        r.isInside = false;
+                }
+                else
+                {
+                    if (!PointInBorderScreen(*d->sheetTrf, arr1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY) ||
+                        !PointInBorderScreen(*d->sheetTrf, arr2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
+                        r.isInside = false;
+                }
+            }
         }
         if (r.isInside)
         {
@@ -533,7 +483,6 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     // fallback (and may still be unit-mismatched if it's the one that succeeds).
     ProPlotPaperSize paperSize;
     double           borderW = 0.0, borderH = 0.0;
-    bool             borderFromInches = false;
 
     if (g_api->ProDrawingSheetSizeGet(drawing, sheet, &paperSize, &borderW, &borderH) != PRO_TK_NO_ERROR
         || borderW <= 0.0 || borderH <= 0.0)
@@ -541,20 +490,10 @@ RuleCheckResult CreoPlugin::RuleFunctions()
         if (g_api->ProDrawingFormatSizeGet(drawing, sheet, &paperSize, &borderW, &borderH) != PRO_TK_NO_ERROR
             || borderW <= 0.0 || borderH <= 0.0)
             return result;
-        borderFromInches = true;
     }
 
     const double bMinX = 0.0, bMinY = 0.0;
     const double bMaxX = borderW, bMaxY = borderH;
-
-    {
-        char buf[256];
-        snprintf(buf, sizeof(buf), "\n=== Rule run: sheet=%d border=(0,0)-(%.4f,%.4f) [source: %s] ===",
-                 sheet, borderW, borderH,
-                 borderFromInches ? "ProDrawingFormatSizeGet - INCHES, may be unit-mismatched"
-                                   : "ProDrawingSheetSizeGet - sheet units");
-        DebugLog(buf);
-    }
 
     // 3b. Screen-coordinate -> drawing-coordinate transform for this sheet.
     // View outlines, note envelopes/leaders, and dimension text/arrow/witness
@@ -563,24 +502,8 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     // without this conversion those points can never be compared correctly.
     ProMatrix sheetTrf;
     ProName   sheetSizeName{};
-    bool haveSheetTrf = (g_api->ProDrawingSheetTrfGet(drawing, sheet, sheetSizeName, sheetTrf) == PRO_TK_NO_ERROR);
-    if (!haveSheetTrf)
-    {
-        DebugLog("ProDrawingSheetTrfGet FAILED — falling back to identity (no screen->drawing conversion).");
-        for (int i = 0; i < 4; ++i)
-            for (int j = 0; j < 4; ++j)
-                sheetTrf[i][j] = (i == j) ? 1.0 : 0.0;
-    }
-
-    {
-        char buf[256];
-        for (int i = 0; i < 4; ++i)
-        {
-            snprintf(buf, sizeof(buf), "sheetTrf row%d = (%.6f, %.6f, %.6f, %.6f)", i,
-                     sheetTrf[i][0], sheetTrf[i][1], sheetTrf[i][2], sheetTrf[i][3]);
-            DebugLog(buf);
-        }
-    }
+    if (g_api->ProDrawingSheetTrfGet(drawing, sheet, sheetSizeName, sheetTrf) != PRO_TK_NO_ERROR)
+        return result;
 
     // 4. Check drawing views
     {
