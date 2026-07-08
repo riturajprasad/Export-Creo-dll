@@ -219,31 +219,26 @@ RuleCheckResult CreoPlugin::RuleFunctions()
 
     ProDrawing drawing = reinterpret_cast<ProDrawing>(mdl);
 
-    int sheetCount = 0;
-    if (g_api->ProDrawingSheetsCount(drawing, &sheetCount) != PRO_TK_NO_ERROR || sheetCount <= 0)
+    int activeSheet = 0;
+    if (g_api->ProDrawingCurrentSheetGet(drawing, &activeSheet) != PRO_TK_NO_ERROR || activeSheet <= 0)
     {
-        result.elements.push_back({ "Drawing has no sheets", false });
+        result.elements.push_back({ "Could not determine active sheet", false });
         return result;
     }
 
-    int symbolIndex = 0;
-    for (int sheet = 1; sheet <= sheetCount; ++sheet)
+    ProDtlsyminst* syminsts = nullptr;
+    if (g_api->ProDrawingDtlsyminstsCollect(drawing, activeSheet, &syminsts) == PRO_TK_NO_ERROR && syminsts)
     {
-        ProDtlsyminst* syminsts = nullptr;
-        if (g_api->ProDrawingDtlsyminstsCollect(drawing, sheet, &syminsts) != PRO_TK_NO_ERROR || !syminsts)
-            continue;
-
         int count = 0;
         g_api->ProArraySizeGet(syminsts, &count);
 
         for (int i = 0; i < count; ++i)
         {
-            ++symbolIndex;
-            const SymbolCheck check = SymbolInstanceHasRequiredText(drawing, sheet, &syminsts[i]);
+            const SymbolCheck check = SymbolInstanceHasRequiredText(drawing, activeSheet, &syminsts[i]);
 
             const std::string label = !check.name.empty()
                 ? NarrowFromWide(check.name)
-                : ("2D Symbol " + std::to_string(symbolIndex) + " (Sheet " + std::to_string(sheet) + ")");
+                : "2D Symbol";
 
             result.elements.push_back({ label, check.matched });
         }
