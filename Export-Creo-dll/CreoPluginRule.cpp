@@ -27,7 +27,20 @@ void CreoInit(const CreoApiContext* api)
 }
 
 // ── Rule-specific helpers ──────────────────────────────────────────────────────
+namespace
+{
 
+    std::string NarrowFromWide(const std::wstring& wide)
+    {
+        if (wide.empty()) return std::string();
+        int len = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        if (len <= 0) return std::string();
+        std::string out(len - 1, '\0');
+        WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, out.data(), len, nullptr, nullptr);
+        return out;
+    }
+
+}
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
@@ -55,17 +68,19 @@ RuleCheckResult CreoPlugin::RuleFunctions()
 
     ProDrawing drawing = reinterpret_cast<ProDrawing>(mdl);
 
-    int sheetCount = 0;
-    if (g_api->ProDrawingSheetsCount(drawing, &sheetCount) != PRO_TK_NO_ERROR || sheetCount <= 0)
+    int activeSheet = 0;
+    if (g_api->ProDrawingCurrentSheetGet(drawing, &activeSheet) != PRO_TK_NO_ERROR || activeSheet <= 0)
     {
-        result.elements.push_back({ "Drawing has no sheets", false });
+        result.elements.push_back({ "Could not determine active sheet", false });
         return result;
     }
 
-    // Rule passes as soon as one 2D symbol carries either required note.
+    if (result.elements.empty())
+        result.elements.push_back({ "Value not found", false });
+
     result.matchAny = true;
     result.passed = std::any_of(result.elements.begin(), result.elements.end(),
-                                 [](const ElementResult& e) { return e.isInside; });
+        [](const ElementResult& e) { return e.isInside; });
 
     // TESTING ONLY — exercises the PopUp flow end-to-end. Yes keeps the rule
     // passed, No puts it in the Failed section (ShowYesNoPopUp's answer
