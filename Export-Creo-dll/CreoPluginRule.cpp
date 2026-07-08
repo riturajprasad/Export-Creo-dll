@@ -61,6 +61,27 @@ namespace
             && rMinY >= bMinY && rMaxY <= bMaxY;
     }
 
+    // Most drawing-entity position queries (view outlines, note envelopes/
+    // leader points, dimension text/arrow/witness-line points) return
+    // coordinates in Creo's "screen" coordinate system, not the physical
+    // "drawing" coordinate system the sheet border is measured in (origin at
+    // the sheet's bottom-left corner, in drawing units). ProDrawingSheetTrfGet
+    // supplies the matrix that converts one to the other; every raw point
+    // must be run through this before it can be compared to the border.
+    void ScreenToDrawing(const ProMatrix& trf, const double in[3], double& outX, double& outY)
+    {
+        outX = in[0] * trf[0][0] + in[1] * trf[1][0] + in[2] * trf[2][0] + trf[3][0];
+        outY = in[0] * trf[0][1] + in[1] * trf[1][1] + in[2] * trf[2][1] + trf[3][1];
+    }
+
+    bool PointInBorderScreen(const ProMatrix& trf, const double in[3],
+                              double bMinX, double bMinY, double bMaxX, double bMaxY)
+    {
+        double x, y;
+        ScreenToDrawing(trf, in, x, y);
+        return PointInBorder(x, y, bMinX, bMinY, bMaxX, bMaxY);
+    }
+
     // The view's own name in Creo (e.g. "FRONT", "SECTION_A"), the same name
     // shown by right-click > Properties on the view.
     std::wstring GetViewName(ProDrawing drawing, ProView view)
@@ -108,7 +129,8 @@ namespace
     // balloon is read back the same way any other note is.
     NoteCheck InspectNote(ProDtlnote* note, ProDrawing drawing, int targetSheet,
                           ProDwgtable* tables, int tableCount,
-                          double bMinX, double bMinY, double bMaxX, double bMaxY)
+                          double bMinX, double bMinY, double bMaxX, double bMaxY,
+                          const ProMatrix& sheetTrf)
     {
         NoteCheck check;
 
@@ -157,7 +179,7 @@ namespace
             if (g_api->ProDtlnoteLineEnvelopeGet(note, line, env) != PRO_TK_NO_ERROR)
                 break;
             for (int c = 0; c < 4; ++c)
-                if (!PointInBorder(env[c][0], env[c][1], bMinX, bMinY, bMaxX, bMaxY))
+                if (!PointInBorderScreen(sheetTrf, env[c], bMinX, bMinY, bMaxX, bMaxY))
                     check.isInside = false;
         }
 
@@ -226,7 +248,7 @@ namespace
 
                 CheckViewSheet(aview);
 
-                if (!PointInBorder(aloc[0], aloc[1], bMinX, bMinY, bMaxX, bMaxY))
+                if (!PointInBorderScreen(sheetTrf, aloc, bMinX, bMinY, bMaxX, bMaxY))
                     check.isInside = false;
 
                 ProAsmcomppath compPath{};
@@ -251,6 +273,7 @@ namespace
         ProDrawing                  drawing;
         int                         targetSheet;
         double                      bMinX, bMinY, bMaxX, bMaxY;
+        const ProMatrix*            sheetTrf;
         std::vector<ElementResult>* out;
         int                         index;
     };
@@ -278,10 +301,17 @@ namespace
         ProPoint3d outline[2];
         if (g_api->ProDrawingViewOutlineGet(drawing, view, outline) == PRO_TK_NO_ERROR)
         {
-            double vMinX = std::min(outline[0][0], outline[1][0]);
-            double vMaxX = std::max(outline[0][0], outline[1][0]);
-            double vMinY = std::min(outline[0][1], outline[1][1]);
-            double vMaxY = std::max(outline[0][1], outline[1][1]);
+            // ProDrawingViewOutlineGet returns the outline in screen
+            // coordinates — convert both corners to drawing coordinates
+            // before comparing against the (drawing-coordinate) sheet border.
+            double p0x, p0y, p1x, p1y;
+            ScreenToDrawing(*d->sheetTrf, outline[0], p0x, p0y);
+            ScreenToDrawing(*d->sheetTrf, outline[1], p1x, p1y);
+
+            double vMinX = std::min(p0x, p1x);
+            double vMaxX = std::max(p0x, p1x);
+            double vMinY = std::min(p0y, p1y);
+            double vMaxY = std::max(p0y, p1y);
             r.isInside = RectInBorder(vMinX, vMinY, vMaxX, vMaxY,
                                        d->bMinX, d->bMinY, d->bMaxX, d->bMaxY);
         }
@@ -300,6 +330,7 @@ namespace
         ProDrawing                  drawing;
         int                         targetSheet;
         double                      bMinX, bMinY, bMaxX, bMaxY;
+        const ProMatrix*            sheetTrf;
         std::vector<ElementResult>* out;
         int                         index;
     };
@@ -333,8 +364,12 @@ namespace
             return PRO_TK_NO_ERROR;
         }
 
+        // ProDimensionLocationGet rejects a call where both view and drawing
+        // are non-NULL (PRO_TK_BAD_INPUTS / PRO_TK_NOT_VALID) — when a
+        // drawing is supplied, view must be NULL. `view` above is only used
+        // to confirm the dimension is displayed on a view.
         ProDimlocation loc = nullptr;
-        if (g_api->ProDimensionLocationGet(dim, view, d->drawing, &loc) != PRO_TK_NO_ERROR || !loc)
+        if (g_api->ProDimensionLocationGet(dim, nullptr, d->drawing, &loc) != PRO_TK_NO_ERROR || !loc)
         {
             d->out->push_back(r);
             return PRO_TK_NO_ERROR;
@@ -342,29 +377,31 @@ namespace
 
         r.isInside = true;
 
+        // ProDimlocation*Get points are in screen coordinates, same as the
+        // other drawing-entity position queries — convert before comparing.
         {
             ProBoolean hasElbow;
             ProPoint3d textPt;
             double     elbowLen;
             if (g_api->ProDimlocationTextGet(loc, &hasElbow, textPt, &elbowLen) == PRO_TK_NO_ERROR)
-                if (!PointInBorder(textPt[0], textPt[1],
-                                   d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
+                if (!PointInBorderScreen(*d->sheetTrf, textPt,
+                                         d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
                     r.isInside = false;
         }
         if (r.isInside)
         {
             ProPoint3d arr1, arr2;
             if (g_api->ProDimlocationArrowsGet(loc, arr1, arr2) == PRO_TK_NO_ERROR)
-                if (!PointInBorder(arr1[0], arr1[1], d->bMinX, d->bMinY, d->bMaxX, d->bMaxY) ||
-                    !PointInBorder(arr2[0], arr2[1], d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
+                if (!PointInBorderScreen(*d->sheetTrf, arr1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY) ||
+                    !PointInBorderScreen(*d->sheetTrf, arr2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
                     r.isInside = false;
         }
         if (r.isInside)
         {
             ProPoint3d wl1, wl2;
             if (g_api->ProDimlocationWitnesslinesGet(loc, wl1, wl2) == PRO_TK_NO_ERROR)
-                if (!PointInBorder(wl1[0], wl1[1], d->bMinX, d->bMinY, d->bMaxX, d->bMaxY) ||
-                    !PointInBorder(wl2[0], wl2[1], d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
+                if (!PointInBorderScreen(*d->sheetTrf, wl1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY) ||
+                    !PointInBorderScreen(*d->sheetTrf, wl2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
                     r.isInside = false;
         }
 
@@ -421,9 +458,19 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     const double bMinX = 0.0, bMinY = 0.0;
     const double bMaxX = borderW, bMaxY = borderH;
 
+    // 3b. Screen-coordinate -> drawing-coordinate transform for this sheet.
+    // View outlines, note envelopes/leaders, and dimension text/arrow/witness
+    // points are all returned in screen coordinates, while the border above
+    // is in drawing coordinates (origin at the sheet's bottom-left corner) —
+    // without this conversion those points can never be compared correctly.
+    ProMatrix sheetTrf;
+    ProName   sheetSizeName{};
+    if (g_api->ProDrawingSheetTrfGet(drawing, sheet, sheetSizeName, sheetTrf) != PRO_TK_NO_ERROR)
+        return result;
+
     // 4. Check drawing views
     {
-        ViewVisitData vd{ drawing, sheet, bMinX, bMinY, bMaxX, bMaxY, &result.elements, 1 };
+        ViewVisitData vd{ drawing, sheet, bMinX, bMinY, bMaxX, bMaxY, &sheetTrf, &result.elements, 1 };
         g_api->ProDrawingViewVisit(drawing, ViewVisitCb, ViewFilterCb, &vd);
     }
 
@@ -447,7 +494,7 @@ RuleCheckResult CreoPlugin::RuleFunctions()
             for (int i = 0; i < count; ++i)
             {
                 const NoteCheck check = InspectNote(&notes[i], drawing, sheet, tables, tableCount,
-                                                     bMinX, bMinY, bMaxX, bMaxY);
+                                                     bMinX, bMinY, bMaxX, bMaxY, sheetTrf);
                 if (!check.onActiveSheet)
                     continue;   // belongs to a view on a different sheet — exclude it
 
@@ -476,7 +523,7 @@ RuleCheckResult CreoPlugin::RuleFunctions()
 
     // 6. Check dimensions
     {
-        DimVisitData dd{ drawing, sheet, bMinX, bMinY, bMaxX, bMaxY, &result.elements, 1 };
+        DimVisitData dd{ drawing, sheet, bMinX, bMinY, bMaxX, bMaxY, &sheetTrf, &result.elements, 1 };
         g_api->ProDrawingDimensionVisit(drawing, PRO_DIMENSION,     DimVisitCb, DimFilterCb, &dd);
         g_api->ProDrawingDimensionVisit(drawing, PRO_REF_DIMENSION, DimVisitCb, DimFilterCb, &dd);
     }
