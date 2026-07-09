@@ -231,12 +231,29 @@ RuleCheckResult CreoPlugin::RuleFunctions()
 
     for (const ViewInfo& v : views)
     {
-        bool pass = v.isExempt || IsStandardScale(v.scale);
+        std::vector<std::string> reasons;
 
-        if (&v == firstView && haveTitleBlockScale)
-            pass = pass && ScaleEquals(v.scale, titleBlockScale);
+        const bool scaleOk = v.isExempt || IsStandardScale(v.scale);
+        if (!scaleOk)
+            reasons.push_back("Wrong Scale");
 
-        result.elements.push_back({ v.label, pass });
+        if (&v == firstView && haveTitleBlockScale && !ScaleEquals(v.scale, titleBlockScale))
+            reasons.push_back("Scale Not Loaded on Title Block");
+
+        const bool pass  = reasons.empty();
+        std::string label = v.label;
+        if (!pass)
+        {
+            label += " (";
+            for (size_t i = 0; i < reasons.size(); ++i)
+            {
+                if (i > 0) label += ", ";
+                label += reasons[i];
+            }
+            label += ")";
+        }
+
+        result.elements.push_back({ label, pass });
     }
 
     result.passed = std::all_of(result.elements.begin(), result.elements.end(),
