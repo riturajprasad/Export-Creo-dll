@@ -113,11 +113,12 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     const std::string  fileNameNarrow = NarrowFromWide(fileName);
     const FilenameCheck check = ValidateAcFilename(fileName);
 
-    result.elements.push_back({ "Filename \"" + fileNameNarrow + "\" is 13 or 14 characters long", check.lengthOk });
-    result.elements.push_back({ "First 10 characters are numeric digits", check.leadingDigitsOk });
-    result.elements.push_back({ "11th character is a hyphen (-)", check.hyphenOk });
-    result.elements.push_back({ "12th character is alphanumeric", check.alnumOk });
-    result.elements.push_back({ "Trailing 1-2 characters are numeric digits", check.trailingDigitsOk });
+    result.elements.push_back({ "" + fileNameNarrow + "", (check.lengthOk && check.leadingDigitsOk && check.hyphenOk && check.alnumOk && check.trailingDigitsOk) });
+    //result.elements.push_back({ "Filename \"" + fileNameNarrow + "\" is 13 or 14 characters long", check.lengthOk });
+    //result.elements.push_back({ "First 10 characters are numeric digits", check.leadingDigitsOk });
+    //result.elements.push_back({ "11th character is a hyphen (-)", check.hyphenOk });
+    //result.elements.push_back({ "12th character is alphanumeric", check.alnumOk });
+    //result.elements.push_back({ "Trailing 1-2 characters are numeric digits", check.trailingDigitsOk });
 
     // AC-standard filename check: every positional condition above must hold.
     result.matchAny = false;
