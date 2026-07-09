@@ -73,16 +73,48 @@ namespace
         return false;
     }
 
-    // Concatenates every rendered text line of a note into one block of text,
-    // the same text a user reads on the sheet, so multi-line notes can be
-    // searched for the required phrases as a single substring check.
-    std::wstring CollectNoteText(ProDtlnote* note)
+    // Classification of a note used only to choose its result-label prefix —
+    // mirrors the BL/MD/SY/LD/NT categories the border-check rule uses, minus
+    // isTableCell (table-cell notes are filtered out before this runs) and
+    // the border/sheet fields that rule needs and this one does not.
+    struct NoteInfo
     {
-        std::wstring result;
+        std::wstring text;                  // the note's rendered text, concatenated line by line
+        bool         isBalloon     = false; // true if a leader is anchored to an assembly component
+        bool         isModelDriven = false; // mirrors a note authored in the 3D model, not the sheet
+        bool         hasSymbol     = false; // has a detail symbol instance embedded in its text
+        bool         hasLeader     = false; // has at least one leader (balloon or attached to geometry)
+    };
+
+    // Collects a note's rendered text (concatenated line by line, the same
+    // text a user reads on the sheet) and classifies it the same way the
+    // border-check rule does, so multi-line notes can be searched for the
+    // required phrases as a single substring check while still labelling
+    // balloons/model-notes/symbol-notes/leader-notes distinctly.
+    NoteInfo InspectNote(ProDtlnote* note)
+    {
+        NoteInfo info;
+
+        {
+            ProMdl refModel = nullptr;
+            if (g_api->ProDtlnoteModelrefGet(note, nullptr, 1, 1, &refModel) == PRO_TK_NO_ERROR && refModel)
+                info.isModelDriven = true;
+        }
+
+        {
+            ProDtlsyminst* syminsts = nullptr;
+            if (g_api->ProDtlnoteDtlsyminstsCollect(note, &syminsts) == PRO_TK_NO_ERROR && syminsts)
+            {
+                int symCount = 0;
+                g_api->ProArraySizeGet(reinterpret_cast<ProArray>(syminsts), &symCount);
+                info.hasSymbol = symCount > 0;
+                g_api->ProArrayFree(reinterpret_cast<ProArray*>(&syminsts));
+            }
+        }
 
         ProDtlnotedata notedata = nullptr;
         if (g_api->ProDtlnoteDataGet(note, nullptr, PRODISPMODE_NUMERIC, &notedata) != PRO_TK_NO_ERROR || !notedata)
-            return result;
+            return info;
 
         ProDtlnoteline* lines = nullptr;
         if (g_api->ProDtlnotedataLinesCollect(notedata, &lines) == PRO_TK_NO_ERROR && lines)
@@ -103,9 +135,9 @@ namespace
                         ProLine buf{};
                         if (g_api->ProDtlnotetextStringGet(texts[t], buf) == PRO_TK_NO_ERROR && buf[0] != L'\0')
                         {
-                            if (!result.empty())
-                                result += L" ";
-                            result += buf;
+                            if (!info.text.empty())
+                                info.text += L" ";
+                            info.text += buf;
                         }
                     }
 
@@ -116,8 +148,57 @@ namespace
             g_api->ProArrayFree(reinterpret_cast<ProArray*>(&lines));
         }
 
+        ProDtlattach* leaders = nullptr;
+        if (g_api->ProDtlnotedataLeadersCollect(notedata, &leaders) == PRO_TK_NO_ERROR && leaders)
+        {
+            int count = 0;
+            g_api->ProArraySizeGet(reinterpret_cast<ProArray>(leaders), &count);
+            info.hasLeader = count > 0;
+
+            for (int i = 0; i < count; ++i)
+            {
+                ProDtlattachType atype;
+                ProView          aview;
+                ProVector        aloc;
+                ProSelection     asel;
+                if (g_api->ProDtlattachGet(leaders[i], &atype, &aview, aloc, &asel) != PRO_TK_NO_ERROR)
+                    continue;
+
+                // A balloon's leader is anchored to a specific assembly
+                // component (comp path with table_num > 0); ordinary leader
+                // notes attach to top-level geometry or nowhere at all.
+                ProAsmcomppath compPath{};
+                if (g_api->ProSelectionAsmcomppathGet(asel, &compPath) == PRO_TK_NO_ERROR
+                    && compPath.table_num > 0)
+                    info.isBalloon = true;
+            }
+
+            g_api->ProArrayFree(reinterpret_cast<ProArray*>(&leaders));
+        }
+
         g_api->ProDtlnotedataFree(notedata);
-        return result;
+        return info;
+    }
+
+    // Prefixes the note's text with a category tag, the same BL/MD/SY/LD/NT
+    // scheme the border-check rule uses, so the two rules' results read the
+    // same way in the UI.
+    std::string LabelForNote(const NoteInfo& info)
+    {
+        if (info.text.empty())
+            return std::string();
+
+        const std::string text = NarrowFromWide(info.text);
+
+        if (info.isBalloon)
+            return "BL: " + text;   // BL for "Balloon Note"
+        if (info.isModelDriven)
+            return "MD: " + text;   // MD for "Model Note"
+        if (info.hasSymbol)
+            return "SY: " + text;   // SY for "Symbol Note"
+        if (info.hasLeader)
+            return "LD: " + text;   // LD for "Leader Note"
+        return "NT: " + text;       // NT for "Note"
     }
 }
 
@@ -178,9 +259,9 @@ RuleCheckResult CreoPlugin::RuleFunctions()
             if (NoteIsTableCell(&notes[i], tables, tableCount))
                 continue;   // excluded per rule — table-cell notes are never checked
 
-            const std::wstring text    = CollectNoteText(&notes[i]);
-            const bool         matched = MatchesRequiredPhrase(text);
-            const std::string  label   = !text.empty() ? NarrowFromWide(text) : "Note";
+            const NoteInfo info    = InspectNote(&notes[i]);
+            const bool     matched = MatchesRequiredPhrase(info.text);
+            const std::string label = LabelForNote(info);
 
             result.elements.push_back({ label, matched });
         }
