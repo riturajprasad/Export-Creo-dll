@@ -29,7 +29,7 @@ void CreoInit(const CreoApiContext* api)
 // ── Rule-specific helpers ──────────────────────────────────────────────────────
 namespace
 {
-    // A 2D symbol counts as a "burrs/sharp-edges" note if its rendered text
+    // A note counts as a "burrs/sharp-edges" note if its rendered text
     // contains either phrase (case-insensitive, substring match).
     const wchar_t* const kRequiredPhrases[] = {
         L"Burrs removed notes",
@@ -62,137 +62,72 @@ namespace
         return out;
     }
 
-    // Looks up the name the symbol was given in Creo's symbol library
-    // (e.g. "BURR_NOTE"), the same name shown by Insert > Symbol in the drawing.
-    std::wstring GetSymbolDefName(ProDtlsymdef* definition)
+    // True if `note` is a cell of any drawing table (BOM, hole table, ...) —
+    // such notes are excluded from the phrase check entirely.
+    bool NoteIsTableCell(ProDtlnote* note, ProDwgtable* tables, int tableCount)
     {
-        ProDtlsymdefdata symdefdata = nullptr;
-        if (g_api->ProDtlsymdefDataGet(definition, &symdefdata) != PRO_TK_NO_ERROR || !symdefdata)
-            return std::wstring();
-
-        ProName name{};
-        std::wstring result;
-        if (g_api->ProDtlsymdefdataNameGet(symdefdata, name) == PRO_TK_NO_ERROR)
-            result = name;
-
-        return result;
+        int row = 0, col = 0;
+        for (int t = 0; t < tableCount; ++t)
+            if (g_api->ProDtlnoteTableCellGet(note, &tables[t], &row, &col) == PRO_TK_NO_ERROR)
+                return true;
+        return false;
     }
 
-    // Checks the fixed text baked into a 2D symbol's definition (the note
-    // lines drawn as part of the symbol artwork) against the required phrases.
-    bool DefinitionTextMatches(ProDrawing drawing, int sheet, ProDtlsymdef* definition)
+    // Concatenates every rendered text line of a note into one block of text,
+    // the same text a user reads on the sheet, so multi-line notes can be
+    // searched for the required phrases as a single substring check.
+    std::wstring CollectNoteText(ProDtlnote* note)
     {
-        bool matched = false;
+        std::wstring result;
 
-        ProDtlnote* notes = nullptr;
-        if (g_api->ProDrawingDtlnotesCollect(drawing, definition, sheet, &notes) != PRO_TK_NO_ERROR || !notes)
-            return false;
+        ProDtlnotedata notedata = nullptr;
+        if (g_api->ProDtlnoteDataGet(note, nullptr, PRODISPMODE_NUMERIC, &notedata) != PRO_TK_NO_ERROR || !notedata)
+            return result;
 
-        int noteCount = 0;
-        g_api->ProArraySizeGet(notes, &noteCount);
-
-        for (int n = 0; n < noteCount && !matched; ++n)
+        ProDtlnoteline* lines = nullptr;
+        if (g_api->ProDtlnotedataLinesCollect(notedata, &lines) == PRO_TK_NO_ERROR && lines)
         {
-            ProDtlnotedata notedata = nullptr;
-            if (g_api->ProDtlnoteDataGet(&notes[n], definition, PRODISPMODE_NUMERIC, &notedata) != PRO_TK_NO_ERROR || !notedata)
-                continue;
+            int lineCount = 0;
+            g_api->ProArraySizeGet(lines, &lineCount);
 
-            ProDtlnoteline* lines = nullptr;
-            if (g_api->ProDtlnotedataLinesCollect(notedata, &lines) == PRO_TK_NO_ERROR && lines)
+            for (int l = 0; l < lineCount; ++l)
             {
-                int lineCount = 0;
-                g_api->ProArraySizeGet(lines, &lineCount);
-
-                for (int l = 0; l < lineCount && !matched; ++l)
+                ProDtlnotetext* texts = nullptr;
+                if (g_api->ProDtlnotelineTextsCollect(lines[l], &texts) == PRO_TK_NO_ERROR && texts)
                 {
-                    ProDtlnotetext* texts = nullptr;
-                    if (g_api->ProDtlnotelineTextsCollect(lines[l], &texts) == PRO_TK_NO_ERROR && texts)
+                    int textCount = 0;
+                    g_api->ProArraySizeGet(texts, &textCount);
+
+                    for (int t = 0; t < textCount; ++t)
                     {
-                        int textCount = 0;
-                        g_api->ProArraySizeGet(texts, &textCount);
-
-                        for (int t = 0; t < textCount && !matched; ++t)
+                        ProLine buf{};
+                        if (g_api->ProDtlnotetextStringGet(texts[t], buf) == PRO_TK_NO_ERROR && buf[0] != L'\0')
                         {
-                            ProLine buf{};
-                            if (g_api->ProDtlnotetextStringGet(texts[t], buf) == PRO_TK_NO_ERROR)
-                                matched = MatchesRequiredPhrase(std::wstring(buf));
+                            if (!result.empty())
+                                result += L" ";
+                            result += buf;
                         }
-
-                        g_api->ProArrayFree(reinterpret_cast<ProArray*>(&texts));
                     }
-                }
 
-                g_api->ProArrayFree(reinterpret_cast<ProArray*>(&lines));
+                    g_api->ProArrayFree(reinterpret_cast<ProArray*>(&texts));
+                }
             }
 
-            g_api->ProDtlnotedataFree(notedata);
+            g_api->ProArrayFree(reinterpret_cast<ProArray*>(&lines));
         }
 
-        g_api->ProArrayFree(reinterpret_cast<ProArray*>(&notes));
-        return matched;
-    }
-
-    // Checks the per-instance variable text (the values a designer typed in
-    // when placing the symbol) against the required phrases.
-    bool VartextMatches(ProDtlsyminstdata data)
-    {
-        bool matched = false;
-
-        ProDtlvartext* vartexts = nullptr;
-        if (g_api->ProDtlsyminstdataVartextsCollect(data, &vartexts) != PRO_TK_NO_ERROR || !vartexts)
-            return false;
-
-        int vtCount = 0;
-        g_api->ProArraySizeGet(vartexts, &vtCount);
-
-        for (int v = 0; v < vtCount && !matched; ++v)
-        {
-            ProLine prompt{};
-            ProLine value{};
-            if (g_api->ProDtlvartextDataGet(vartexts[v], prompt, value) == PRO_TK_NO_ERROR)
-                matched = MatchesRequiredPhrase(std::wstring(value));
-        }
-
-        g_api->ProArrayFree(reinterpret_cast<ProArray*>(&vartexts));
-        return matched;
-    }
-
-    struct SymbolCheck
-    {
-        std::wstring name;   // the symbol's library name, e.g. "BURR_NOTE"
-        bool         matched;
-    };
-
-    // A 2D-symbol instance passes if EITHER its symbol-definition artwork
-    // text OR its per-instance variable text carries one of the required notes.
-    SymbolCheck SymbolInstanceHasRequiredText(ProDrawing drawing, int sheet, ProDtlsyminst* syminst)
-    {
-        SymbolCheck check{ std::wstring(), false };
-
-        ProDtlsyminstdata data = nullptr;
-        if (g_api->ProDtlsyminstDataGet(syminst, PRODISPMODE_NUMERIC, &data) != PRO_TK_NO_ERROR || !data)
-            return check;
-
-        ProDtlsymdef definition{};
-        if (g_api->ProDtlsyminstdataDefGet(data, &definition) == PRO_TK_NO_ERROR)
-        {
-            check.name    = GetSymbolDefName(&definition);
-            check.matched = DefinitionTextMatches(drawing, sheet, &definition);
-        }
-
-        if (!check.matched)
-            check.matched = VartextMatches(data);
-
-        g_api->ProDtlsyminstdataFree(data);
-        return check;
+        g_api->ProDtlnotedataFree(notedata);
+        return result;
     }
 }
 
 // ── Public entry point ────────────────────────────────────────────────────────
 //
-// Rule: pass when at least one 2D symbol on the active drawing carries the
-// text "Burrs removed notes" or "Burrs and Sharp edges removed"; fail when no
-// 2D symbol contains either phrase (including when the drawing has none).
+// Rule: pass when at least one note on the active sheet (of any kind except
+// table-cell notes) carries the text "Burrs removed notes" or "Burrs and
+// Sharp edges removed" anywhere in its rendered text, even as a substring of
+// a longer sentence; fail when no such note is found (including when the
+// drawing has none).
 
 RuleCheckResult CreoPlugin::RuleFunctions()
 {
@@ -225,40 +160,44 @@ RuleCheckResult CreoPlugin::RuleFunctions()
         return result;
     }
 
-    ProDtlsyminst* syminsts = nullptr;
-    if (g_api->ProDrawingDtlsyminstsCollect(drawing, activeSheet, &syminsts) == PRO_TK_NO_ERROR && syminsts)
+    // Table-cell notes (BOM rows, hole tables, ...) are never checked, so
+    // every note must first be tested against every table on the sheet.
+    ProDwgtable* tables = nullptr;
+    int tableCount = 0;
+    if (g_api->ProDrawingTablesCollect(drawing, &tables) == PRO_TK_NO_ERROR && tables)
+        g_api->ProArraySizeGet(tables, &tableCount);
+
+    ProDtlnote* notes = nullptr;
+    if (g_api->ProDrawingDtlnotesCollect(drawing, nullptr, activeSheet, &notes) == PRO_TK_NO_ERROR && notes)
     {
         int count = 0;
-        g_api->ProArraySizeGet(syminsts, &count);
+        g_api->ProArraySizeGet(notes, &count);
 
         for (int i = 0; i < count; ++i)
         {
-            const SymbolCheck check = SymbolInstanceHasRequiredText(drawing, activeSheet, &syminsts[i]);
+            if (NoteIsTableCell(&notes[i], tables, tableCount))
+                continue;   // excluded per rule — table-cell notes are never checked
 
-            const std::string label = !check.name.empty()
-                ? NarrowFromWide(check.name)
-                : "2D Symbol";
+            const std::wstring text    = CollectNoteText(&notes[i]);
+            const bool         matched = MatchesRequiredPhrase(text);
+            const std::string  label   = !text.empty() ? NarrowFromWide(text) : "Note";
 
-            result.elements.push_back({ label, check.matched });
+            result.elements.push_back({ label, matched });
         }
 
-        g_api->ProArrayFree(reinterpret_cast<ProArray*>(&syminsts));
+        g_api->ProArrayFree(reinterpret_cast<ProArray*>(&notes));
     }
 
-    if (result.elements.empty())
-        result.elements.push_back({ "No 2D symbols found on drawing", false });
+    if (tables)
+        g_api->ProArrayFree(reinterpret_cast<ProArray*>(&tables));
 
-    // Rule passes as soon as one 2D symbol carries either required note.
+    if (result.elements.empty())
+        result.elements.push_back({ "No notes found on drawing", false });
+
+    // Rule passes as soon as one note carries either required phrase.
     result.matchAny = true;
     result.passed = std::any_of(result.elements.begin(), result.elements.end(),
                                  [](const ElementResult& e) { return e.isInside; });
-
-    // TESTING ONLY — exercises the PopUp flow end-to-end. Yes keeps the rule
-    // passed, No puts it in the Failed section (ShowYesNoPopUp's answer
-    // replaces RuleStatus on the backend). Remove before shipping this rule.
-    result.popUp.show    = true;
-    result.popUp.kind    = "YesNo";
-    result.popUp.message = "Was this manually verified as acceptable?";
 
     return result;
 }
