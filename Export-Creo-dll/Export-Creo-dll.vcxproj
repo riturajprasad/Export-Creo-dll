@@ -182,6 +182,7 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <None Include="..\creo_system_prompts.py" />
     <None Include="cpp.hint" />
   </ItemGroup>
   <ItemGroup>
