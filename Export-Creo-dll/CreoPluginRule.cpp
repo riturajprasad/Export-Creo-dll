@@ -48,6 +48,7 @@ RuleCheckResult CreoPlugin::RuleFunctions()
 {
     RuleCheckResult result;
     result.passed = false;
+    result.matchAny = true;
 
     if (!g_api)
         return result;   // CreoInit was not called — should never happen in normal operation
@@ -78,16 +79,12 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     if (result.elements.empty())
         result.elements.push_back({ "Value not found", false });
 
-    result.matchAny = true;
     result.passed = std::any_of(result.elements.begin(), result.elements.end(),
         [](const ElementResult& e) { return e.isPass; });
 
-    // TESTING ONLY — exercises the PopUp flow end-to-end. Yes keeps the rule
-    // passed, No puts it in the Failed section (ShowYesNoPopUp's answer
-    // replaces RuleStatus on the backend). Remove before shipping this rule.
-    //result.popUp.show    = true;
-    //result.popUp.kind    = "YesNo";
-    //result.popUp.message = "Was this manually verified as acceptable?";
+	// if result.matchAny = false, then the rule passes only if all elements pass
+    //result.passed = std::all_of(result.elements.begin(), result.elements.end(),
+    //    [](const ElementResult& e) { return e.isPass; });
 
     return result;
 }
