@@ -65,7 +65,7 @@ void CreoInit(const CreoApiContext* api)
 namespace
 {
     // Every rule file needs this: ProName/ProLine/ProMdlName/ProDimension
-    // symbol text and note text all arrive as wide strings; ElementResult.label
+    // symbol text and note text all arrive as wide strings; ElementResult.entityName
     // is std::string (UTF-8). Convert at the boundary, always.
     std::string NarrowFromWide(const std::wstring& wide)
     {
@@ -181,8 +181,8 @@ invent new ones and do not omit setting the ones that matter:
   `show = true` when the recipe explicitly requires a manual user
   confirmation step (see rule 10).
 
-`ElementResult` has exactly two fields: `std::string label` and `bool isInside`.
-`isInside` is the per-item pass/fail bit (the name is historical, from the
+`ElementResult` has exactly two fields: `std::string entityName` and `bool isPass`.
+`isPass` is the per-item pass/fail bit (the name is historical, from the
 original border-containment rule — it means "this item satisfies the check",
 not literally "inside a border", for every other kind of rule).
 
@@ -229,7 +229,7 @@ not literally "inside a border", for every other kind of rule).
   them literally rather than approximating with a "close enough" pattern.
 - Add each per-item result to `result.elements` (one `ElementResult` per
   checked entity — see rule 8). There is no separate object/bool list to keep
-  in sync; `ElementResult{label, isInside}` is already the paired unit.
+  in sync; `ElementResult{entityName, isPass}` is already the paired unit.
 
 6. Creo ProToolkit API usage — critical
 Tools provided:
@@ -348,13 +348,13 @@ last-resort crash barrier, not as your error-handling strategy. Handle every
 8. Elements list rules
 - `result.elements` is the single per-item payload — one `ElementResult` per
   checked entity, pushed as soon as that entity's check is decided.
-- `label` must be a UTF-8 `std::string`. Any ProToolkit text (ProName, ProLine,
+- `entityName` must be a UTF-8 `std::string`. Any ProToolkit text (ProName, ProLine,
   ProMdlName, ProDimension symbol text, note text) arrives wide — always run it
-  through `NarrowFromWide` before assigning to `label`.
-- The source of the label text depends on the entity kind — these are NOT
+  through `NarrowFromWide` before assigning to `entityName`.
+- The source of the entity name depends on the entity kind — these are NOT
   interchangeable, and mixing them up has caused a real bug in this codebase
   (see the dimension example below):
-  - View, Dimension, 2D Symbol instance → label = the entity's own NAME/
+  - View, Dimension, 2D Symbol instance → entityName = the entity's own NAME/
     IDENTIFIER, never the text/value it displays or contains.
     - View:      `ProDrawingViewNameGet` (e.g. "FRONT", "SECTION_A") — the
       same name shown by right-click > Properties on the view.
@@ -363,14 +363,14 @@ last-resort crash barrier, not as your error-handling strategy. Handle every
       `ProDimensionSymtextGet`/`ProDimensionDisplayedValueGet`, which return
       the dimension's *displayed value text* (e.g. "12.50"). Using the value
       getter here was an actual bug in this codebase: it caused every custom
-      dimension name to never appear, because the label silently became the
+      dimension name to never appear, because the entityName silently became the
       measured value instead of the identifier the user assigned.
     - 2D Symbol instance: `ProDtlsymdefdataNameGet` (e.g. "BURR_NOTE") — the
       symbol's library name, not any text baked into its definition artwork
       or per-instance vartext (that text is read separately, only to decide
       pass/fail — see Notes below for the equivalent case where text IS
-      the correct label source).
-  - Note (any of the 6 categories below) → label = the note's rendered TEXT
+      the correct entityName source).
+  - Note (any of the 6 categories below) → entityName = the note's rendered TEXT
     CONTENT (the concatenation of every line's text, the same text a user
     reads on the sheet), never `ProDtlnotedataIdGet`'s internal id and never
     a category name alone. The text is always prefixed with the note's
@@ -396,9 +396,9 @@ last-resort crash barrier, not as your error-handling strategy. Handle every
 - Compute the final result from `result.elements` using the rule's
   aggregation, matching `matchAny`:
   - all_of / all_pass: `result.matchAny = false;` then
-    `result.passed = !result.elements.empty() && std::all_of(result.elements.begin(), result.elements.end(), [](const ElementResult& e){ return e.isInside; });`
+    `result.passed = !result.elements.empty() && std::all_of(result.elements.begin(), result.elements.end(), [](const ElementResult& e){ return e.isPass; });`
   - any_of / any_pass: `result.matchAny = true;` then
-    `result.passed = std::any_of(result.elements.begin(), result.elements.end(), [](const ElementResult& e){ return e.isInside; });`
+    `result.passed = std::any_of(result.elements.begin(), result.elements.end(), [](const ElementResult& e){ return e.isPass; });`
   - equivalent explicit loops are also acceptable when clearer.
 - If `result.elements` ends up empty, `result.passed` must be `false`
   regardless of `matchAny` — an any_of rule with zero candidates has nothing
