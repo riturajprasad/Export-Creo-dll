@@ -80,6 +80,30 @@ namespace
         return NormalizeNoSpaceUpper(GetCellText(table, column, row)) == headerName;
     }
 
+    // Scans a single row for the MATERIAL/COMMENTS header cells. Only writes
+    // to materialCol/commentsCol/materialHeaderRow/commentsHeaderRow when it
+    // finds a match, so it can be called row-by-row and accumulate results
+    // without clobbering what a previous call already found. Stops scanning
+    // columns as soon as both are found (or already known).
+    void LocateHeadersInRow(ProDwgtable* table, int row, int colCount,
+        int& materialCol, int& materialHeaderRow,
+        int& commentsCol, int& commentsHeaderRow)
+    {
+        for (int col = 1; col <= colCount && (materialCol < 0 || commentsCol < 0); ++col)
+        {
+            if (materialCol < 0 && IsHeaderCell(table, col, row, L"MATERIAL"))
+            {
+                materialCol = col;
+                materialHeaderRow = row;
+            }
+            if (commentsCol < 0 && IsHeaderCell(table, col, row, L"COMMENTS"))
+            {
+                commentsCol = col;
+                commentsHeaderRow = row;
+            }
+        }
+    }
+
     bool IsSeeStandard(const std::wstring& normalizedMaterial)
     {
         return normalizedMaterial == L"SEESTANDARD";
@@ -125,7 +149,7 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     if (g_api->ProDrawingTablesCollect(drawing, &tables) != PRO_TK_NO_ERROR || !tables)
     {
         // Fail condition: the MATERIAL/COMMENTS table cells are missing.
-        result.elements.push_back({ "COMMENTS", false });
+        result.elements.push_back({ "TC: COMMENTS", false });
         return result;
     }
 
@@ -150,10 +174,24 @@ RuleCheckResult CreoPlugin::RuleFunctions()
         int materialCol = -1, materialHeaderRow = -1;
         int commentsCol = -1, commentsHeaderRow = -1;
 
-        for (int row = 1; row <= rowCount && (materialCol < 0 || commentsCol < 0); ++row)
+        // Fast path: every standard BOM table carries its MATERIAL/COMMENTS
+        // headers in row 1, so one O(colCount) scan resolves the common
+        // case without touching the rest of the grid.
+        LocateHeadersInRow(table, 1, colCount, materialCol, materialHeaderRow, commentsCol, commentsHeaderRow);
+
+        // Fallback: headers weren't (both) on row 1 — either this table
+        // isn't a match at all, or its header sits elsewhere. Scan the
+        // remaining rows as a single flattened loop (row-major index via
+        // div/mod) rather than a second nested loop, stopping the moment
+        // both columns are known.
+        if (materialCol < 0 || commentsCol < 0)
         {
-            for (int col = 1; col <= colCount; ++col)
+            const int remainingCells = (rowCount - 1) * colCount;
+            for (int idx = 0; idx < remainingCells && (materialCol < 0 || commentsCol < 0); ++idx)
             {
+                const int row = 2 + idx / colCount;
+                const int col = 1 + idx % colCount;
+
                 if (materialCol < 0 && IsHeaderCell(table, col, row, L"MATERIAL"))
                 {
                     materialCol = col;
