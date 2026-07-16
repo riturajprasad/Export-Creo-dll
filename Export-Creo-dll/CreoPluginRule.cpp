@@ -104,9 +104,9 @@ namespace
         }
     }
 
-    bool IsSeeStandard(const std::wstring& normalizedMaterial)
+    bool IsSeeStandard_Drawing(const std::wstring& normalizedMaterial)
     {
-        return normalizedMaterial == L"SEESTANDARD";
+        return (normalizedMaterial == L"SEESTANDARD" || normalizedMaterial == L"SEEDRAWING");
     }
 
     // Matches "T=<number>" or "TH=<number>" in an already-normalized
@@ -221,10 +221,10 @@ RuleCheckResult CreoPlugin::RuleFunctions()
             if (materialText.empty() && commentsText.empty())
                 continue;   // blank row
 
-            if (IsSeeStandard(NormalizeNoSpaceUpper(materialText)))
-                continue;   // MATERIAL is "See Standard" — row is exempt
+            if (IsSeeStandard_Drawing(NormalizeNoSpaceUpper(materialText)))
+                continue;   // MATERIAL is "See Standard" or "See Drawing" — row is exempt
 
-            // Fail condition: MATERIAL is not "See Standard" but COMMENTS is missing.
+            // Fail condition: MATERIAL is not "See Standard" or "See Drawing" but COMMENTS is missing.
             if (commentsText.empty())
             {
                 overallPass = false;
