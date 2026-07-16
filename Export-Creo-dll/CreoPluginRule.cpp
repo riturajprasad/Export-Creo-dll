@@ -257,7 +257,7 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     }
 
     result.passed = std::all_of(result.elements.begin(), result.elements.end(),
-        [](const ElementResult& e) { return e.isInside; });
+        [](const ElementResult& e) { return e.isPass; });
 
     return result;
 }
