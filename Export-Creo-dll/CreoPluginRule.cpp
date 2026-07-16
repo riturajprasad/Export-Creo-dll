@@ -147,7 +147,7 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     RuleCheckResult result;
     result.passed = false;
     result.matchAny = true;   // any_of: keyword present ("Oil"/"Water") must be satisfied
-    const std::string noneFoundLabel = "No Oil or Water found";
+    const std::string noneFoundLabel = "Value not found";
     std::string oilCellLabel;
     std::string waterCellLabel;
 
