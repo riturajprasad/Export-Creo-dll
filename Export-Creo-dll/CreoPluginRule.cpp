@@ -278,7 +278,7 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     // Rule passes as soon as one note carries either required phrase.
     result.matchAny = true;
     result.passed = std::any_of(result.elements.begin(), result.elements.end(),
-                                 [](const ElementResult& e) { return e.isInside; });
+                                 [](const ElementResult& e) { return e.isPass; });
 
     return result;
 }
