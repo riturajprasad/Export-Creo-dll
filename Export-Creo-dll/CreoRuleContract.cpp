@@ -83,9 +83,9 @@ static std::string SerialiseResult(const RuleCheckResult& res)
     std::string descs;
     for (const auto& el : res.elements) {
         if (!descs.empty()) descs += ",";
-        const std::string name = el.label.empty() ? "Value not found" : el.label;
+        const std::string name = el.entityName.empty() ? "Value not found" : el.entityName;
         descs += "{\"EntityName\":\"" + JEsc(name) + "\","
-                  "\"Status\":"       + (el.isInside ? "true" : "false") + "}";
+                  "\"Status\":"       + (el.isPass ? "true" : "false") + "}";
     }
 
     return std::string("{\"Status\":") + (res.passed ? "true" : "false") +

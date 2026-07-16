@@ -251,7 +251,7 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     // Rule passes as soon as one 2D symbol carries either required note.
     result.matchAny = true;
     result.passed = std::any_of(result.elements.begin(), result.elements.end(),
-                                 [](const ElementResult& e) { return e.isInside; });
+                                 [](const ElementResult& e) { return e.isPass; });
 
     // TESTING ONLY — exercises the PopUp flow end-to-end. Yes keeps the rule
     // passed, No puts it in the Failed section (ShowYesNoPopUp's answer
