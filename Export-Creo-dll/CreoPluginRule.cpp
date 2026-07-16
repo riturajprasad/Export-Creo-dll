@@ -203,13 +203,13 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     if (!foundBomTable)
     {
         // Fail condition: the MATERIAL/COMMENTS table cells are missing.
-        result.elements.push_back({ "COMMENTS", false });
+        result.elements.push_back({ "TC: COMMENTS", false });
         return result;
     }
 
     // Only one entity is reported: the whole COMMENTS column passes only if
     // every row in it passed (or was exempted).
-    result.elements.push_back({ "COMMENTS", overallPass });
+    result.elements.push_back({ "TC: COMMENTS", overallPass });
 
     result.matchAny = true;
     result.passed = std::any_of(result.elements.begin(), result.elements.end(),
