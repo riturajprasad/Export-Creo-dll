@@ -18,8 +18,8 @@
 // fully contained within the active sheet's format border.
 struct CREOPLUGIN_API ElementResult
 {
-    std::string label;
-    bool        isInside;
+    std::string entityName;
+    bool        isPass;
 };
 
 // Optional request to show a user-facing popup, handled by the backend
