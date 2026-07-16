@@ -147,7 +147,9 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     RuleCheckResult result;
     result.passed = false;
     result.matchAny = true;   // any_of: keyword present ("Oil"/"Water") must be satisfied
-    std::string entity_name = "No Oil or Water found";
+    const std::string noneFoundLabel = "No Oil or Water found";
+    std::string oilCellLabel;
+    std::string waterCellLabel;
 
     if (!g_api)
         return result;   // CreoInit was not called — should never happen in normal operation
@@ -203,22 +205,18 @@ RuleCheckResult CreoPlugin::RuleFunctions()
                     const std::wstring cellText = TrimW(GetCellText(table, col, row));
                     if (cellText.empty()) continue;
 
-                    // Exact, case-sensitive match against the whole cell —
-                    // "Oil"/"Water" as a substring of other text does not count.
-                    if (!oilFound && cellText == L"Oil"){
-                        entity_name = "Oil";
+                    // Exact match against the whole cell — "Oil"/"oil" and
+                    // "Water"/"water" are the only accepted casings; any
+                    // other casing, or either word as a substring of other
+                    // text, does not count.
+                    if (!oilFound && (cellText == L"Oil" || cellText == L"oil"))
+                    {
+                        oilCellLabel = NarrowFromWide(cellText);
                         oilFound = true;
                     }
-                    if (!oilFound && cellText == L"oil"){
-                        entity_name = "oil";
-                        oilFound = true;
-                    }
-                    if (!waterFound && cellText == L"Water"){
-                        entity_name = "Water";
-                        waterFound = true;
-                    }
-                    if (!waterFound && cellText == L"water"){
-                        entity_name = "water";
+                    if (!waterFound && (cellText == L"Water" || cellText == L"water"))
+                    {
+                        waterCellLabel = NarrowFromWide(cellText);
                         waterFound = true;
                     }
                 }
@@ -232,7 +230,7 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     // passes trivially and reports a single informational entry.
     if (!oilFound && !waterFound)
     {
-        result.elements.push_back({ entity_name, true });
+        result.elements.push_back({ noneFoundLabel, true });
     }
     else
     {
@@ -264,9 +262,9 @@ RuleCheckResult CreoPlugin::RuleFunctions()
 
         // Step 4: one element per keyword that was actually present in a table cell.
         if (oilFound)
-            result.elements.push_back({ "TC: " + entity_name, oilCodeFound });
+            result.elements.push_back({ "TC: " + oilCellLabel, oilCodeFound });
         if (waterFound)
-            result.elements.push_back({ "TC: " + entity_name, waterCodeFound });
+            result.elements.push_back({ "TC: " + waterCellLabel, waterCodeFound });
     }
 
     if (result.elements.empty())
