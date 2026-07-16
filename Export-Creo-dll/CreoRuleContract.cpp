@@ -51,24 +51,46 @@ static std::string JEsc(const std::string& s)
     return o;
 }
 
+// ── Serialise PopUpRequest → JSON ────────────────────────────────────────────
+static std::string SerialisePopUp(const PopUpRequest& p)
+{
+    return std::string("{\"Show\":")   + (p.show ? "true" : "false") + "," +
+           "\"Kind\":\""               + JEsc(p.kind)         + "\"," +
+           "\"Message\":\""            + JEsc(p.message)      + "\"," +
+           "\"Title\":\""              + JEsc(p.title)        + "\"," +
+           "\"InvertOutput\":"         + (p.invertOutput ? "true" : "false") + "," +
+           "\"DefaultValue\":\""       + JEsc(p.defaultValue) + "\"}";
+}
+
 // ── Serialise RuleCheckResult → JSON ─────────────────────────────────────────
 // Produces the format that FunctionExecutor.cpp's ParseResultJson expects:
 //
-//   {"Status":bool,"Descriptions":[{"EntityName":"...","Status":bool}, ...]}
+//   {"Status":bool,"MatchType":"Any"|"All","PopUp":{...},
+//    "Descriptions":[{"EntityName":"...","Status":bool}, ...]}
 //
-// where "Status" is the overall pass/fail flag and each Descriptions entry
-// maps to one ElementResult (label → EntityName, isInside → Status).
+// "Status" is this DLL's own pass/fail computation (kept for backward
+// compatibility with older backends). "MatchType" tells the backend which
+// combinator this rule intends — "Any" if the rule should pass as soon as one
+// EntityName passes, "All" if every EntityName must pass — so the backend can
+// independently re-derive the final RuleStatus from Descriptions rather than
+// trusting this DLL's Status bit blindly. "PopUp" tells the backend whether
+// this rule needs a user-facing popup and, if so, which PopUpFunctions.h
+// function to call and with what parameters — see PopUpRequest in CreoPlugin.h.
+// Each Descriptions entry maps to one ElementResult (label → EntityName,
+// isInside → Status).
 static std::string SerialiseResult(const RuleCheckResult& res)
 {
     std::string descs;
     for (const auto& el : res.elements) {
         if (!descs.empty()) descs += ",";
-        const std::string name = el.label.empty() ? "Value not found" : el.label;
+        const std::string name = el.entityName.empty() ? "Value not found" : el.entityName;
         descs += "{\"EntityName\":\"" + JEsc(name) + "\","
-                  "\"Status\":"       + (el.isInside ? "true" : "false") + "}";
+                  "\"Status\":"       + (el.isPass ? "true" : "false") + "}";
     }
 
     return std::string("{\"Status\":") + (res.passed ? "true" : "false") +
+           ",\"MatchType\":\"" + (res.matchAny ? "Any" : "All") + "\"" +
+           ",\"PopUp\":" + SerialisePopUp(res.popUp) +
            ",\"Descriptions\":[" + descs + "]}";
 }
 
@@ -108,10 +130,10 @@ extern "C" {
 //         (still valid JSON so FunctionExecutor can surface the message).
 //
 // JSON payload on success:
-//   {"Status":true,"Descriptions":[{"EntityName":"DrawingView 1","Status":true}, ...]}
+//   {"Status":true,"MatchType":"Any","Descriptions":[{"EntityName":"DrawingView 1","Status":true}, ...]}
 //
 // JSON payload on failure (exception path):
-//   {"Status":false,"Descriptions":[{"EntityName":"<error text>","Status":false}]}
+//   {"Status":false,"MatchType":"Any","Descriptions":[{"EntityName":"<error text>","Status":false}]}
 __declspec(dllexport) int CreoExecuteRule(const char* /*ruleJson*/, char** resultJson)
 {
     if (!resultJson) return 1;
