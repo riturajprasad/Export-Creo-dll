@@ -304,9 +304,9 @@ namespace
 
         ElementResult r;
         const std::wstring name = GetViewName(drawing, view);
-        r.label = !name.empty() ? NarrowFromWide(name) : ("DrawingView " + std::to_string(d->index));
+        r.entityName = !name.empty() ? NarrowFromWide(name) : ("DrawingView " + std::to_string(d->index));
         ++d->index;
-        r.isInside = false;
+        r.isPass = false;
 
         ProPoint3d outline[2];
         if (g_api->ProDrawingViewOutlineGet(drawing, view, outline) == PRO_TK_NO_ERROR)
@@ -322,7 +322,7 @@ namespace
             double vMaxX = std::max(p0x, p1x);
             double vMinY = std::min(p0y, p1y);
             double vMaxY = std::max(p0y, p1y);
-            r.isInside = RectInBorder(vMinX, vMinY, vMaxX, vMaxY,
+            r.isPass = RectInBorder(vMinX, vMinY, vMaxX, vMaxY,
                                        d->bMinX, d->bMinY, d->bMaxX, d->bMaxY);
         }
 
@@ -363,9 +363,9 @@ namespace
 
         ElementResult r;
         const std::wstring symtext = GetDimensionSymbolText(dim);
-        r.label = !symtext.empty() ? NarrowFromWide(symtext) : ("Dimension " + std::to_string(d->index));
+        r.entityName = !symtext.empty() ? NarrowFromWide(symtext) : ("Dimension " + std::to_string(d->index));
         ++d->index;
-        r.isInside = false;
+        r.isPass = false;
 
         ProView view;
         if (g_api->ProDrawingDimensionViewGet(d->drawing, dim, &view) != PRO_TK_NO_ERROR)
@@ -385,7 +385,7 @@ namespace
             return PRO_TK_NO_ERROR;
         }
 
-        r.isInside = true;
+        r.isPass = true;
 
         // Per ProDimlocationArrowsGet's own docs: "arrow_2 ... Should be
         // ignored if the dimension type would have only one arrowhead."
@@ -405,9 +405,9 @@ namespace
             if (g_api->ProDimlocationTextGet(loc, &hasElbow, textPt, &elbowLen) == PRO_TK_NO_ERROR)
                 if (!PointInBorderScreen(*d->sheetTrf, textPt,
                                          d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
-                    r.isInside = false;
+                    r.isPass = false;
         }
-        if (r.isInside)
+        if (r.isPass)
         {
             ProPoint3d arr1, arr2;
             if (g_api->ProDimlocationArrowsGet(loc, arr1, arr2) == PRO_TK_NO_ERROR)
@@ -415,23 +415,23 @@ namespace
                 if (singleArrowhead)
                 {
                     if (!PointInBorderScreen(*d->sheetTrf, arr1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
-                        r.isInside = false;
+                        r.isPass = false;
                 }
                 else
                 {
                     if (!PointInBorderScreen(*d->sheetTrf, arr1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY) ||
                         !PointInBorderScreen(*d->sheetTrf, arr2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
-                        r.isInside = false;
+                        r.isPass = false;
                 }
             }
         }
-        if (r.isInside)
+        if (r.isPass)
         {
             ProPoint3d wl1, wl2;
             if (g_api->ProDimlocationWitnesslinesGet(loc, wl1, wl2) == PRO_TK_NO_ERROR)
                 if (!PointInBorderScreen(*d->sheetTrf, wl1, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY) ||
                     !PointInBorderScreen(*d->sheetTrf, wl2, d->bMinX, d->bMinY, d->bMaxX, d->bMaxY))
-                    r.isInside = false;
+                    r.isPass = false;
         }
 
         g_api->ProDimlocationFree(loc);
@@ -537,18 +537,18 @@ RuleCheckResult CreoPlugin::RuleFunctions()
 
                 ElementResult r;
                 if (check.isBalloon)
-                    r.label = check.text.empty() ? "" : "BL: " + NarrowFromWide(check.text); // BL for "Balloon Note"
+                    r.entityName = check.text.empty() ? "" : "BL: " + NarrowFromWide(check.text); // BL for "Balloon Note"
                 else if (check.isTableCell)
-                    r.label = check.text.empty() ? "" : "TC: " + NarrowFromWide(check.text); // TC for "Table Cell Note"
+                    r.entityName = check.text.empty() ? "" : "TC: " + NarrowFromWide(check.text); // TC for "Table Cell Note"
                 else if (check.isModelDriven)
-                    r.label = check.text.empty() ? "" : "MD: " + NarrowFromWide(check.text); // MD for "Model Note"
+                    r.entityName = check.text.empty() ? "" : "MD: " + NarrowFromWide(check.text); // MD for "Model Note"
                 else if (check.hasSymbol)
-                    r.label = check.text.empty() ? "" : "SY: " + NarrowFromWide(check.text); // SY for "Symbol Note"
+                    r.entityName = check.text.empty() ? "" : "SY: " + NarrowFromWide(check.text); // SY for "Symbol Note"
                 else if (check.hasLeader)
-                    r.label = check.text.empty() ? "" : "LD: " + NarrowFromWide(check.text); // LD for "Leader Note"
+                    r.entityName = check.text.empty() ? "" : "LD: " + NarrowFromWide(check.text); // LD for "Leader Note"
                 else
-                    r.label = check.text.empty() ? "" : "NT: " + NarrowFromWide(check.text); // NT for "Note"
-                r.isInside = check.isInside;
+                    r.entityName = check.text.empty() ? "" : "NT: " + NarrowFromWide(check.text); // NT for "Note"
+                r.isPass = check.isInside;
                 result.elements.push_back(r);
             }
             g_api->ProArrayFree((ProArray*)&notes);
@@ -568,7 +568,7 @@ RuleCheckResult CreoPlugin::RuleFunctions()
     // 7. Rule passes only when every entity is inside the border
     result.passed = !result.elements.empty() &&
         std::all_of(result.elements.begin(), result.elements.end(),
-                    [](const ElementResult& e) { return e.isInside; });
+                    [](const ElementResult& e) { return e.isPass; });
 
     return result;
 }
