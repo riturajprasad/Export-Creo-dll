@@ -1,7 +1,7 @@
 #pragma once
 // ============================================================================
 // CreoRuleContract.h  —  Shared API bridge for CreoRuleChecker and all rule DLLs
-// Version: 4
+// Version: 5
 // ============================================================================
 //
 // PURPOSE
@@ -37,11 +37,11 @@
 //   When adding entries: ALSO add the corresponding fill in MainThreadDispatcher.cpp
 //   (one extra line in the s_api initialiser) and rebuild CreoRuleChecker.dll.
 //
-// COVERAGE (version 4)
+// COVERAGE (version 5)
 //   Drawing/Sheet · Views · Dimensions · Detail Notes · Attachments
 //   GD&T · Annotations · Drawing Tables · 3D Tables · Draft Entities
 //   Detail Groups · Symbol Instances · Layers · Model/Solid · Selection · Array
-//   Text Style · Symbol Definitions · Solid/Feature · Simplified Reps
+//   Text Style · Symbol Definitions · Solid/Feature · Simplified Reps · Model Item
 //   (Removed: 3D Model Notes · Set Datum Tags · Surface Finish · Annotation Elements ·
 //    ProDimensionOrdinatestandardGet · ProDtlattachArrowtypeGet · ProGtolAddlTextBoxedGet ·
 //    ProGtolTextstyleGet · ProGtoltextTextstyleGet · ProGtolElbowlengthGet ·
@@ -102,7 +102,7 @@
 
 struct CreoApiContext
 {
-    int version; // = 4
+    int version; // = 5
 
     // ════════════════════════════════════════════════════════════════════════
     // §1  MODEL / DRAWING IDENTITY
@@ -854,4 +854,9 @@ struct CreoApiContext
     ProError(*ProSimprepdataGet)             (ProSimprep* p_simp_rep,
         ProSimprepdata** p_data);
     ProError(*ProSimprepdataNameGet)         (ProSimprepdata* p_data, ProName name);
+
+    // ════════════════════════════════════════════════════════════════════════
+    // §30  ADDITIONAL MODEL ITEM FUNCTIONS  (ProModelitem.h)
+    // ════════════════════════════════════════════════════════════════════════
+    ProError(*ProModelitemNameGet)           (ProModelitem* p_item, ProName name);
 };
