@@ -59,6 +59,8 @@ namespace
     // documents PRO_FEATURE as a valid item type. ProFeature's superobject is
     // ProModelitem (same underlying model-item layout), so the handle is
     // reinterpreted rather than converted through any extra API call.
+    // Features with no name (lookup fails, e.g. PRO_TK_E_NOT_FOUND, or an
+    // empty name comes back) are skipped — only named features are reported.
     ProError FeatureVisitCb(ProFeature* feature, ProError status, ProAppData appData)
     {
         auto* data = static_cast<FeatureVisitData*>(appData);
@@ -66,17 +68,14 @@ namespace
             return PRO_TK_NO_ERROR;
 
         ProName featureName{};
-        if (g_api->ProModelitemNameGet(reinterpret_cast<ProModelitem*>(feature), featureName) == PRO_TK_NO_ERROR)
-        {
-            std::string name = NarrowFromWide(featureName);
-            data->out->push_back({ name.empty() ? "Feature " + std::to_string(feature->id) : name, true });
-        }
-        else
-        {
-            // Feature has no name of its own (e.g. PRO_TK_E_NOT_FOUND) — fall
-            // back to a category + id per the entity-label-source convention.
-            data->out->push_back({ "Feature " + std::to_string(feature->id), true });
-        }
+        if (g_api->ProModelitemNameGet(reinterpret_cast<ProModelitem*>(feature), featureName) != PRO_TK_NO_ERROR)
+            return PRO_TK_NO_ERROR;
+
+        std::string name = NarrowFromWide(featureName);
+        if (name.empty())
+            return PRO_TK_NO_ERROR;
+
+        data->out->push_back({ name, true });
         return PRO_TK_NO_ERROR;
     }
 
@@ -107,19 +106,22 @@ RuleCheckResult CreoPlugin::RuleFunctions()
         return result;
     }
 
-    // Step 2: confirm the active model is an assembly.
+    // Step 2: confirm the active model is an assembly or part.
     ProMdlType mdlType;
-    if (g_api->ProMdlTypeGet(mdl, &mdlType) != PRO_TK_NO_ERROR || mdlType != PRO_MDL_ASSEMBLY)
+    if (g_api->ProMdlTypeGet(mdl, &mdlType) != PRO_TK_NO_ERROR || (mdlType != PRO_MDL_ASSEMBLY && mdlType != PRO_MDL_PART))
     {
-        result.elements.push_back({ "Active model is not an assembly", false });
+        result.elements.push_back({ "Active model is not an assembly or part", false });
         return result;
     }
 
     // Assemblies (like parts) are addressed through ProSolid.
     ProSolid solid = reinterpret_cast<ProSolid>(mdl);
 
-    // Step 3: visit every feature on the assembly, collecting one
-    // ElementResult per feature found.
+    // Step 3: visit every feature owned by the assembly itself. ProSolidFeatVisit
+    // is scoped to `solid` (this assembly's own ProSolid) — it does not recurse
+    // into the separate ProMdl/ProSolid of each component part in the model
+    // tree, so part-level features are never visited or reported here.
+    // One ElementResult is collected per named assembly-level feature found.
     FeatureVisitData visitData{ &result.elements };
     g_api->ProSolidFeatVisit(solid, FeatureVisitCb, FeatureFilterCb, &visitData);
 
